@@ -1,0 +1,7 @@
+{
+  "name": "CISMM X Connect",
+  "description": "The official Progressive Web App for the 'Congreso Internacional Spa, Médico y Micropigmentación (CISMM X)' event. Access schedules, connect with professionals, and enhance your event experience.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

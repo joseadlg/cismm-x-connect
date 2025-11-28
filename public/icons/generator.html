@@ -1,0 +1,33 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Generador de Iconos</title>
+</head>
+<body>
+    <h1>Generando Iconos...</h1>
+    <p>Por favor espera, las descargas comenzarÃ¡n automÃ¡ticamente.</p>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <img id="source" src="icon.svg" style="display:none;" onload="generateIcons()" />
+    <script>
+        function generateIcons() {
+            const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+            const img = document.getElementById('source');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            sizes.forEach(size => {
+                canvas.width = size;
+                canvas.height = size;
+                ctx.drawImage(img, 0, 0, size, size);
+                
+                const link = document.createElement('a');
+                link.download = 'icon-' + size + 'x' + size + '.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+            
+            document.body.innerHTML += '<p style="color:green">Â¡Iconos generados! Revisa tu carpeta de descargas.</p>';
+        }
+    </script>
+</body>
+</html>
