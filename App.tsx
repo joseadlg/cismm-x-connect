@@ -21,6 +21,7 @@ const ExhibitorDashboard = lazy(() => import('./components/views/ExhibitorDashbo
 const NewsBoard = lazy(() => import('./components/views/NewsBoard').then(module => ({ default: module.NewsBoard })));
 import { ToastContainer } from './components/ToastContainer';
 import { useToast } from './contexts/ToastContext';
+import { verifySecureToken } from './utils/security';
 
 // Custom hook for localStorage
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((prevState: T) => T)) => void] => {
@@ -116,7 +117,7 @@ const App = () => {
     }
   }, [myAgenda, setMyAgenda, setPoints, setLeaderboard]);
 
-  const handleScanSuccess = useCallback((data: any) => {
+  const handleScanSuccess = useCallback(async (data: any) => {
     // Check if it's a contact (has id string and name) or exhibitor (has exhibitorId number)
     if (data.exhibitorId) {
       // Handle Exhibitor Scan
@@ -131,9 +132,21 @@ const App = () => {
       } else {
         showToast(`Ya has visitado a ${data.name}.`, 'info');
       }
-    } else if (data.id && data.name) {
+    } else if ((data.id && data.name) || (data.payload && data.signature)) {
       // Handle Contact Scan OR Login
-      const scannedUser = data as UserProfile;
+
+      let scannedUser = data as UserProfile;
+
+      // Verify Secure Token if present
+      if (data.payload && data.signature) {
+        const verifiedPayload = await verifySecureToken(data);
+        if (verifiedPayload) {
+          scannedUser = verifiedPayload as UserProfile;
+        } else {
+          showToast('⚠️ Error de Seguridad: Código QR inválido o manipulado.', 'error');
+          return;
+        }
+      }
 
       // Check if this is a login attempt (scanning own badge)
       // For simplicity, we assume if the scanned ID matches a known user pattern or if we are in a "Login Mode" (which we might need to add later, but for now let's assume any user scan could be a login if not already logged in?)
@@ -159,7 +172,7 @@ const App = () => {
       // If `scannedUser.deviceId` exists and `scannedUser.deviceId !== deviceId`, warn the user.
       // If `scannedUser.deviceId` is undefined, we "bind" it (in our local contacts list for now).
 
-      const contact = data as UserProfile;
+      const contact = scannedUser;
 
       // SIMULATED SECURITY CHECK
       if (contact.deviceId && contact.deviceId !== deviceId) {
@@ -287,10 +300,10 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans">
+    <div className="min-h-screen font-sans text-slate-900">
       <Header title={viewTitles[activeView]} />
       <ToastContainer />
-      <main className="pb-20">
+      <main className="pb-32">
 
         <Suspense fallback={<LoadingSpinner />}>
           {renderView()}

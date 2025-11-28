@@ -10,12 +10,23 @@
   }
 
   body {
-    @apply bg-white;
+    @apply text-white min-h-screen overflow-x-hidden;
+    background: radial-gradient(circle at 50% 0%, #ffffff 0%, #e5e7eb 100%);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
       'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
       sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-glass-surface backdrop-blur-md border border-glass-border shadow-glass rounded-2xl;
+  }
+
+  .glass-button {
+    @apply bg-glass-surface backdrop-blur-sm border border-glass-border shadow-glass rounded-xl active:scale-95 transition-all duration-200 hover:bg-white/10;
   }
 }
 

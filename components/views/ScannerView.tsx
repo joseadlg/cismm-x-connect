@@ -25,8 +25,21 @@ export const ScannerView: React.FC<ScannerViewProps> = ({ onScanSuccess }) => {
         (decodedText: string) => {
           setScanResult(decodedText);
           try {
-            const contactData = JSON.parse(decodedText);
-            if ((contactData.id && contactData.name) || contactData.exhibitorId) {
+            let contactData;
+            try {
+              contactData = JSON.parse(decodedText);
+            } catch (e) {
+              // If JSON parse fails, try Base64 decode
+              try {
+                contactData = JSON.parse(atob(decodedText));
+              } catch (e2) {
+                throw new Error("Invalid format");
+              }
+            }
+
+            if (contactData.payload && contactData.signature) {
+              onScanSuccess(contactData);
+            } else if ((contactData.id && contactData.name) || contactData.exhibitorId) {
               onScanSuccess(contactData);
             } else {
               setError("Código QR no válido. No es un perfil ni expositor de CISMM X Connect.");

@@ -4,6 +4,7 @@ import { UserProfile, View } from '../../types';
 import { Cog6ToothIcon } from '../Icons';
 
 import QRious from 'qrious';
+import { generateSecureToken } from '../../utils/security';
 
 interface ProfileViewProps {
   user: UserProfile;
@@ -15,15 +16,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
   const qrRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (qrRef.current) {
-      new QRious({
-        element: qrRef.current,
-        value: JSON.stringify({ id: user.id, name: user.name, title: user.title, company: user.company, photoUrl: user.photoUrl, interests: user.interests }),
-        size: 200,
-        background: 'white',
-        foreground: '#0D2A4C'
-      });
-    }
+    const generateQR = async () => {
+      if (qrRef.current) {
+        const secureToken = await generateSecureToken({
+          id: user.id,
+          name: user.name,
+          title: user.title,
+          company: user.company,
+          photoUrl: user.photoUrl,
+          interests: user.interests
+        });
+
+        new QRious({
+          element: qrRef.current,
+          value: secureToken,
+          size: 200,
+          background: 'white',
+          foreground: '#0D2A4C'
+        });
+      }
+    };
+    generateQR();
   }, [user]);
 
   return (
