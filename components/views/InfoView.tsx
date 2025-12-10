@@ -48,7 +48,7 @@ export const InfoView: React.FC = () => {
                     Esta se les enviará a su número y correo proporcionado en el momento de su inscripción.
                 </FaqItem>
                 <FaqItem question="¿Habrá opciones de comida?">
-                    Sí, hay una zona de restauración con varias opciones disponibles para almuerzo y snacks durante todo el día.
+                    Sí, hay una zona de comidas con varias opciones disponibles para almuerzo y snacks durante todo el día.
                 </FaqItem>
             </div>
         </div>
