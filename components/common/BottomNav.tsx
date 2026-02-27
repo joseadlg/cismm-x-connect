@@ -5,6 +5,7 @@ import { HomeIcon, CalendarIcon, QrCodeIcon, UserCircleIcon, UserGroupIcon } fro
 interface BottomNavProps {
   activeView: View;
   setActiveView: (view: View) => void;
+  unreadNewsCount?: number;
 }
 
 const NavItem = ({ icon, label, isActive, onClick }: {
@@ -23,7 +24,7 @@ const NavItem = ({ icon, label, isActive, onClick }: {
   </button>
 );
 
-export const BottomNav = ({ activeView, setActiveView }: BottomNavProps) => {
+export const BottomNav = ({ activeView, setActiveView, unreadNewsCount = 0 }: BottomNavProps) => {
   const navItems: { id: View; label: string; icon: ReactNode }[] = [
     { id: 'DASHBOARD', label: 'Inicio', icon: <HomeIcon /> },
     { id: 'AGENDA', label: 'Agenda', icon: <CalendarIcon /> },
@@ -57,8 +58,13 @@ export const BottomNav = ({ activeView, setActiveView }: BottomNavProps) => {
             className={`relative z-10 flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors duration-200 ${activeView === item.id ? 'text-brand-accent' : 'text-slate-500'
               }`}
           >
-            <div className={`transition-transform duration-200 ${activeView === item.id ? 'scale-110' : 'scale-100'}`}>
+            <div className={`transition-transform duration-200 relative ${activeView === item.id ? 'scale-110' : 'scale-100'}`}>
               {item.icon}
+              {item.id === 'NEWS' && unreadNewsCount > 0 && (
+                <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
+                  {unreadNewsCount > 9 ? '9+' : unreadNewsCount}
+                </span>
+              )}
             </div>
             <span className={`text-xs mt-1 font-medium ${activeView === item.id ? 'opacity-100' : 'opacity-70'}`}>
               {item.label}

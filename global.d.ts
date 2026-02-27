@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 // TypeScript interfaces for PWA and external libraries
 
 export interface BeforeInstallPromptEvent extends Event {

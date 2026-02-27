@@ -13,6 +13,8 @@ export const EXHIBITORS: Exhibitor[] = [
   { id: 3, name: 'SkinCare Solutions', logoUrl: 'https://picsum.photos/seed/skin/200/100', description: 'Cosmética profesional formulada con ingredientes activos de última generación.', contact: 'contact@skincare.com', website: '#', standNumber: 'C01', category: 'Cosmética' },
 ];
 
+export const INITIAL_EXHIBITOR_CATEGORIES: string[] = ['Aparatología', 'Micropigmentación', 'Cosmética', 'Software'];
+
 export const AGENDA_SESSIONS: AgendaSession[] = [
   // Viernes
   { id: 1, title: 'Últimas Tendencias en Rellenos Dérmicos', speakerIds: [1], startTime: '09:00', endTime: '10:00', room: 'Sala Principal A', description: 'Un análisis profundo de los nuevos materiales y técnicas de aplicación para resultados naturales y duraderos.', day: 'Viernes', track: 'Medicina Estética' },

@@ -56,7 +56,13 @@ self.addEventListener('fetch', (event) => {
 
                 return fetch(fetchRequest).then((response) => {
                     // Check if valid response
-                    if (!response || response.status !== 200 || response.type !== 'basic') {
+                    const isSupabaseStorage = event.request.url.includes('/storage/v1/object/public/avatars/');
+                    if (!response || response.status !== 200) {
+                        return response;
+                    }
+
+                    // Only cache 'basic' local requests or our aggressive Supabase storage cache
+                    if (response.type !== 'basic' && !isSupabaseStorage) {
                         return response;
                     }
 

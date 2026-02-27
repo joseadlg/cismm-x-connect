@@ -1,7 +1,7 @@
 
 import { ReactNode } from 'react';
 import { AgendaSession, Speaker, UserProfile, View, Exhibitor } from '../../types';
-import { ALL_ATTENDEES, CURRENT_USER } from '../../constants';
+import { ALL_ATTENDEES } from '../../constants';
 import { CalendarIcon, InformationCircleIcon, TrophyIcon, UserGroupIcon } from '../Icons';
 
 interface DashboardViewProps {
@@ -10,8 +10,9 @@ interface DashboardViewProps {
   setActiveView: (view: View) => void;
   points: number;
   speakers: Speaker[];
-  userRole: 'admin' | 'exhibitor' | 'attendee';
+  userRole: 'admin' | 'exhibitor' | 'attendee' | 'speaker';
   exhibitors: Exhibitor[];
+  user: UserProfile;
 }
 
 const QuickAccessCard = ({ title, icon, onClick }: { title: string; icon: ReactNode; onClick: () => void; }) => (
@@ -21,7 +22,7 @@ const QuickAccessCard = ({ title, icon, onClick }: { title: string; icon: ReactN
   </button>
 );
 
-export const DashboardView = ({ myAgenda, allSessions, setActiveView, points, speakers, userRole, exhibitors }: DashboardViewProps) => {
+export const DashboardView = ({ myAgenda, allSessions, setActiveView, points, speakers, userRole, exhibitors, user }: DashboardViewProps) => {
   const getSpeakerName = (speakerId: number) => {
     return speakers.find(s => s.id === speakerId)?.name || 'Ponente Desconocido';
   };
@@ -29,14 +30,14 @@ export const DashboardView = ({ myAgenda, allSessions, setActiveView, points, sp
   const upcomingSessions = allSessions.filter(session => myAgenda.includes(session.id)).slice(0, 2);
 
   const recommendedProfiles = ALL_ATTENDEES.filter(attendee =>
-    attendee.id !== CURRENT_USER.id &&
-    attendee.interests.some(interest => CURRENT_USER.interests.includes(interest))
+    attendee.id !== user.id &&
+    attendee.interests.some(interest => user.interests.includes(interest))
   ).slice(0, 3);
 
   return (
     <div className="p-4 space-y-6">
       <div className="bg-white p-4 rounded-lg shadow-md">
-        <h2 className="text-xl font-bold text-brand-primary mb-2">Hola, {CURRENT_USER.name}</h2>
+        <h2 className="text-xl font-bold text-brand-primary mb-2">Hola, {user.name}</h2>
         <p className="text-gray-600">Bienvenido a CISMM X Connect. Aquí tienes un resumen de tu día.</p>
         <p className="text-gray-600 mt-2">Tus Puntos: <span className="font-bold text-brand-accent">{points}</span></p>
       </div>

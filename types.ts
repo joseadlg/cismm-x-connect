@@ -20,7 +20,7 @@ export interface Exhibitor {
   contact: string;
   website: string;
   standNumber: string;
-  category: 'Aparatología' | 'Micropigmentación' | 'Cosmética' | 'Software';
+  category: string;
 }
 
 export interface AgendaSession {
@@ -57,6 +57,9 @@ export interface UserProfile {
   exhibitorId?: number; // For exhibitors
   track: 'Medicina Estética' | 'Spa' | 'PMU' | 'General';
   deviceId?: string; // For device binding security
+  points?: number;
+  maxDevices?: number;
+  registeredDevices?: string[];
 }
 
 export interface LeaderboardEntry {
