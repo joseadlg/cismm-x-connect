@@ -8,103 +8,104 @@ interface ScannerViewProps {
 export const ScannerView: React.FC<ScannerViewProps> = ({ onScanSuccess }) => {
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isStarted, setIsStarted] = useState(false);
   const scannerRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const qrCodeScanner = new Html5Qrcode("reader");
-    scannerRef.current = qrCodeScanner;
-
-    const startScanner = () => {
-      // Use 85% of the container width for the scan box, capped at 400px
-      const containerWidth = containerRef.current?.offsetWidth || 320;
-      const boxSize = Math.min(Math.floor(containerWidth * 0.85), 400);
-
-      qrCodeScanner.start(
-        { facingMode: "environment" },
-        {
-          fps: 15,
-          qrbox: { width: boxSize, height: boxSize },
-          aspectRatio: 1.0,
-        },
-        (decodedText: string) => {
-          setScanResult(decodedText);
-          try {
-            let contactData;
-            try {
-              contactData = JSON.parse(decodedText);
-            } catch (e) {
-              // If JSON parse fails, try Base64 decode
-              try {
-                contactData = JSON.parse(atob(decodedText));
-              } catch (e2) {
-                throw new Error("Invalid format");
-              }
-            }
-
-            if (contactData.payload && contactData.signature) {
-              onScanSuccess(contactData);
-            } else if ((contactData.id && contactData.name) || contactData.exhibitorId) {
-              onScanSuccess(contactData);
-            } else {
-              setError("Código QR no válido. No es un perfil ni expositor de CISMM X Connect.");
-            }
-          } catch (e) {
-            setError("Error al procesar el código QR.");
-          }
-          qrCodeScanner.stop().catch(console.error);
-        },
-        (_errorMessage: string) => {
-          // Ignore "QR code not found" frame errors
+  const processQR = (decodedText: string) => {
+    try {
+      let contactData;
+      try {
+        contactData = JSON.parse(decodedText);
+      } catch {
+        try {
+          contactData = JSON.parse(atob(decodedText));
+        } catch {
+          throw new Error("Invalid format");
         }
-      ).catch((err: any) => {
+      }
+      if (contactData.payload && contactData.signature) {
+        onScanSuccess(contactData);
+      } else if ((contactData.id && contactData.name) || contactData.exhibitorId) {
+        onScanSuccess(contactData);
+      } else {
+        setError("Código QR no válido. No es un perfil de CISMM X Connect.");
+      }
+    } catch {
+      setError("Error al procesar el código QR.");
+    }
+  };
+
+  const startScanner = () => {
+    setError(null);
+    setScanResult(null);
+    const qr = new Html5Qrcode("reader");
+    scannerRef.current = qr;
+
+    qr.start(
+      { facingMode: "environment" },
+      {
+        fps: 15,
+        // Use a FUNCTION so the library computes the box off the real viewfinder size
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const smaller = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.floor(smaller * 0.9);
+          return { width: size, height: size };
+        },
+        aspectRatio: 1.333, // 4:3 — best for QR scanning on mobile
+        rememberLastUsedCamera: true,
+      },
+      (decodedText: string) => {
+        setScanResult(decodedText);
+        processQR(decodedText);
+        qr.stop().catch(console.error);
+      },
+      () => { /* ignore per-frame errors */ }
+    )
+      .then(() => setIsStarted(true))
+      .catch((err: any) => {
         setError("No se pudo iniciar la cámara. Por favor, otorga los permisos necesarios.");
         console.error(err);
       });
-    };
+  };
 
-    // Small delay to let the DOM render and get accurate container width
-    const timer = setTimeout(startScanner, 100);
-
+  useEffect(() => {
+    startScanner();
     return () => {
-      clearTimeout(timer);
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().catch((err: any) => {
-          console.error("Failed to stop scanner:", err);
-        });
+      if (scannerRef.current?.isScanning) {
+        scannerRef.current.stop().catch(console.error);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className="flex flex-col items-center p-4 text-center">
-      <h2 className="text-xl font-bold text-brand-primary mb-2">Escanear Código QR</h2>
-      <p className="text-gray-600 mb-4 text-sm">
-        Apunta la cámara al código QR de otro asistente para intercambiar contactos.
+    <div className="flex flex-col items-center text-center w-full">
+      <h2 className="text-xl font-bold text-brand-primary mt-4 mb-1">Escanear Código QR</h2>
+      <p className="text-gray-600 mb-3 text-sm px-4">
+        Apunta la cámara al código QR de otro asistente o stand.
       </p>
 
-      {/* Scanner container — full width on mobile */}
+      {/* Reader fills full width — NO max-w cap so camera is as large as possible */}
       <div
-        ref={containerRef}
-        className="w-full max-w-lg mx-auto rounded-xl overflow-hidden shadow-lg border-4 border-brand-accent"
-      >
-        <div id="reader" className="w-full" />
-      </div>
+        id="reader"
+        className="w-full"
+        style={{ maxHeight: '70vh' }}
+      />
 
-      {scanResult && (
-        <div className="mt-4 w-full max-w-lg p-4 bg-green-100 text-green-800 rounded-lg">
+      {scanResult && !error && (
+        <div className="mt-4 mx-4 p-4 bg-green-100 text-green-800 rounded-lg w-full max-w-lg">
           <h3 className="font-bold text-lg">¡Éxito!</h3>
-          <p>Contacto añadido a tu lista.</p>
+          <p>Procesado correctamente.</p>
         </div>
       )}
+
       {error && (
-        <div className="mt-4 w-full max-w-lg p-4 bg-red-100 text-red-800 rounded-lg">
+        <div className="mt-4 mx-4 p-4 bg-red-100 text-red-800 rounded-lg w-full max-w-lg">
           <h3 className="font-bold">Error</h3>
-          <p>{error}</p>
+          <p className="text-sm mt-1">{error}</p>
           <button
-            onClick={() => setError(null)}
-            className="mt-2 px-4 py-1 bg-red-200 rounded-full text-sm hover:bg-red-300"
+            onClick={startScanner}
+            className="mt-3 px-5 py-2 bg-brand-accent text-white rounded-full text-sm font-semibold hover:opacity-90"
           >
             Intentar de nuevo
           </button>
