@@ -31,7 +31,7 @@ export const LoginView: React.FC = () => {
         const startScanner = () => {
             qrCodeScanner.start(
                 { facingMode: "environment" },
-                { fps: 10, qrbox: { width: 250, height: 250 } },
+                { fps: 15, qrbox: (w: number, h: number) => ({ width: Math.floor(Math.min(w, h) * 0.98), height: Math.floor(Math.min(w, h) * 0.98) }) },
                 async (decodedText: string) => {
                     // Pause scanner to prevent double-scans
                     if (scannerRef.current?.isScanning) {
@@ -175,16 +175,16 @@ export const LoginView: React.FC = () => {
                     </div>
 
                     {/* Mode Switching Container */}
-                    <div className="min-h-[350px]">
+                    <div className="w-full">
                         {isScannerMode ? (
                             // SCANNER VIEW
-                            <div className="flex flex-col items-center">
-                                <p className="text-slate-500 text-sm mb-4 text-center">
-                                    Alinea el <span className="font-bold text-slate-700">Código QR</span> de tu gafete oficial impreso dentro del recuadro para acceder automáticamente a tu agenda.
+                            <div className="flex flex-col items-center w-full">
+                                <p className="text-slate-500 text-sm mb-3 text-center px-2">
+                                    Alinea el <span className="font-bold text-slate-700">Código QR</span> de tu gafete oficial dentro del recuadro.
                                 </p>
 
-                                <div className="w-full relative rounded-lg overflow-hidden border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center aspect-square shadow-inner">
-                                    <div id="login-reader" className="w-full h-full"></div>
+                                <div className="w-full relative overflow-hidden rounded-xl shadow-md" style={{ minHeight: '60vh' }}>
+                                    <div id="login-reader" className="w-full" />
                                     {loading && (
                                         <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10 backdrop-blur-sm">
                                             <div className="w-8 h-8 border-4 border-brand-primary border-t-transparent rounded-full animate-spin"></div>
