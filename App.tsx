@@ -25,6 +25,7 @@ const NewsBoard = lazy(() => import('./components/views/NewsBoard').then(module 
 import { ToastContainer } from './components/ToastContainer';
 import { useToast } from './contexts/ToastContext';
 import { verifySecureToken } from './utils/security';
+import { isSessionActive } from './utils/timeValidation';
 
 // Custom hook for localStorage used for legacy non-db items like contacts and device_id
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((prevState: T) => T)) => void] => {
@@ -74,10 +75,28 @@ const MainApp = () => {
   const points = profile.points || 0;
 
   const {
-    speakers, exhibitors, agendaSessions, leaderboard, exhibitorCategories, newsPosts,
-    myAgenda, visitedExhibitors, checkedInSessions, loading, unreadNewsCount,
-    setSpeakers, setExhibitors, setAgendaSessions, setExhibitorCategories, setNewsPosts,
-    setMyAgenda, setVisitedExhibitors, setCheckedInSessions, setUnreadNewsCount, refreshData
+    agendaSessions,
+    speakers,
+    myAgenda,
+    setMyAgenda,
+    visitedExhibitors,
+    setVisitedExhibitors,
+    checkedInSessions,
+    setCheckedInSessions,
+    myRatings,
+    setMyRatings,
+    exhibitors,
+    leaderboard,
+    newsPosts,
+    exhibitorCategories,
+    setSpeakers,
+    setExhibitors,
+    setAgendaSessions,
+    setExhibitorCategories,
+    unreadNewsCount,
+    loading,
+    setUnreadNewsCount,
+    refreshData
   } = useAppData(profile.id);
 
   // Clear unread count when visiting News
@@ -110,6 +129,8 @@ const MainApp = () => {
   }, []);
 
   const handleAddPoints = async (amount: number, reason: string) => {
+    // Only attendees participate in gamification
+    if (userRole !== 'attendee') return;
     const newPoints = points + amount;
     await supabase.from('profiles').update({ points: newPoints }).eq('id', profile.id);
     await refreshProfile();
@@ -119,28 +140,53 @@ const MainApp = () => {
 
   const toggleAgendaItem = useCallback(async (sessionId: number) => {
     const isAdding = !myAgenda.includes(sessionId);
+    // Optimistic UI update
     setMyAgenda(prev => isAdding ? [...prev, sessionId] : prev.filter(id => id !== sessionId));
 
     try {
       if (isAdding) {
-        await supabase.from('user_agenda').insert({ user_id: profile.id, session_id: sessionId });
+        const { error } = await supabase.from('user_agenda').insert({ user_id: profile.id, session_id: sessionId });
+        if (error) {
+          console.error("Error adding to agenda:", error);
+          showToast(`Error al guardar en agenda: ${error.message}`, 'error');
+          // Revert local state
+          setMyAgenda(prev => prev.filter(id => id !== sessionId));
+          return;
+        }
         await handleAddPoints(50, 'Agregado a tu agenda');
       } else {
-        await supabase.from('user_agenda').delete().match({ user_id: profile.id, session_id: sessionId });
+        const { error } = await supabase.from('user_agenda').delete().match({ user_id: profile.id, session_id: sessionId });
+        if (error) {
+          console.error("Error removing from agenda:", error);
+          showToast(`Error al quitar de agenda: ${error.message}`, 'error');
+          // Revert local state
+          setMyAgenda(prev => [...prev, sessionId]);
+          return;
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      showToast('Error de red al actualizar agenda.', 'error');
     }
-  }, [myAgenda, profile.id, points]);
+  }, [myAgenda, profile.id, points, showToast]);
 
   const handleScanSuccess = useCallback(async (data: any) => {
     if (data.exhibitorId) {
       if (!visitedExhibitors.includes(data.exhibitorId)) {
-        setVisitedExhibitors(prev => [...prev, data.exhibitorId]);
-        await supabase.from('user_visited_exhibitors').insert({ user_id: profile.id, exhibitor_id: data.exhibitorId });
-        await handleAddPoints(50, `¡Visitaste ${data.name}!`);
+        const { error } = await supabase.from('user_visited_exhibitors').insert({ user_id: profile.id, exhibitor_id: data.exhibitorId });
+        if (error) {
+          if (error.code === '23505') {
+            showToast('Ya has visitado este stand (Registrado en servidor).', 'info');
+            setVisitedExhibitors(prev => [...prev, data.exhibitorId]); // Sync local state
+          } else {
+            showToast('Error al registrar visita.', 'error');
+          }
+        } else {
+          setVisitedExhibitors(prev => [...prev, data.exhibitorId]);
+          await handleAddPoints(50, `¡Visitaste ${data.name || 'un Stand'}!`);
+        }
       } else {
-        showToast(`Ya has visitado a ${data.name}.`, 'info');
+        showToast(`Ya has visitado a ${data.name || 'este Expositor'}.`, 'info');
       }
     } else if ((data.id && data.name) || (data.payload && data.signature)) {
       let scannedUser = data as UserProfile;
@@ -161,9 +207,22 @@ const MainApp = () => {
       }
 
       if (!contacts.some(c => c.id === contact.id)) {
-        const boundContact = { ...contact, deviceId: contact.deviceId || deviceId };
-        setContacts(prev => [...prev, boundContact]);
-        await handleAddPoints(100, `¡Contacto añadido: ${contact.name}!`);
+        // Backend Validation for contact connections
+        const { error } = await supabase.from('user_contacts_log').insert({ user_id: profile.id, contact_id: contact.id });
+
+        if (error) {
+          if (error.code === '23505') {
+            showToast(`${contact.name} ya estaba en tus registros del servidor.`, 'info');
+            const boundContact = { ...contact, deviceId: contact.deviceId || deviceId };
+            setContacts(prev => [...prev, boundContact]); // Sync local state without points
+          } else {
+            showToast('Error al guardar contacto en el servidor.', 'error');
+          }
+        } else {
+          const boundContact = { ...contact, deviceId: contact.deviceId || deviceId };
+          setContacts(prev => [...prev, boundContact]);
+          await handleAddPoints(100, `¡Contacto añadido: ${contact.name}!`);
+        }
       } else {
         showToast(`${contact.name} ya está en tus contactos.`, 'info');
       }
@@ -174,12 +233,34 @@ const MainApp = () => {
   }, [contacts, visitedExhibitors, deviceId, profile.id, points]);
 
   const handleSessionCheckIn = useCallback(async (sessionId: number) => {
-    if (!checkedInSessions.includes(sessionId)) {
-      setCheckedInSessions(prev => [...prev, sessionId]);
-      await supabase.from('user_session_checkins').insert({ user_id: profile.id, session_id: sessionId });
-      await handleAddPoints(20, '¡Check-in realizado!');
+    const session = agendaSessions.find(s => s.id === sessionId);
+    if (!session) {
+      showToast('Sesión no encontrada.', 'error');
+      return;
     }
-  }, [checkedInSessions, profile.id, points]);
+
+    if (!isSessionActive(session.day, session.startTime, session.endTime)) {
+      showToast('Esta conferencia no está activa en este momento.', 'error');
+      return;
+    }
+
+    if (!checkedInSessions.includes(sessionId)) {
+      const { error } = await supabase.from('user_session_checkins').insert({ user_id: profile.id, session_id: sessionId });
+      if (error) {
+        if (error.code === '23505') {
+          showToast('Check-in previamente registrado en el servidor.', 'info');
+          setCheckedInSessions(prev => [...prev, sessionId]);
+        } else {
+          showToast('Error al hacer check-in.', 'error');
+        }
+      } else {
+        setCheckedInSessions(prev => [...prev, sessionId]);
+        await handleAddPoints(20, '¡Check-in realizado!');
+      }
+    } else {
+      showToast('Ya has hecho check-in a esta sesión.', 'info');
+    }
+  }, [checkedInSessions, profile.id, points, agendaSessions, showToast]);
 
   const handleCreatePost = useCallback(async (data: { title: string; content: string; category: string }) => {
     const newPost = {
@@ -213,7 +294,7 @@ const MainApp = () => {
   const renderView = () => {
     switch (activeView) {
       case 'DASHBOARD': return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={CURRENT_USER} />;
-      case 'AGENDA': return <AgendaView sessions={agendaSessions} myAgenda={myAgenda} toggleAgendaItem={toggleAgendaItem} speakers={speakers} user={CURRENT_USER} checkedInSessions={checkedInSessions} onCheckIn={handleSessionCheckIn} />;
+      case 'AGENDA': return <AgendaView sessions={agendaSessions} myAgenda={myAgenda} toggleAgendaItem={toggleAgendaItem} speakers={speakers} user={CURRENT_USER} checkedInSessions={checkedInSessions} myRatings={myRatings} onCheckIn={handleSessionCheckIn} onRatingSubmitted={(sessionId) => setMyRatings(prev => [...prev, sessionId])} />;
       case 'SPEAKERS': return <SpeakersView speakers={speakers} agendaSessions={agendaSessions} />;
       case 'EXHIBITORS': return <ExhibitorsView exhibitors={exhibitors} />;
       case 'SCANNER': return <ScannerView onScanSuccess={handleScanSuccess} />;
@@ -227,13 +308,21 @@ const MainApp = () => {
     }
   };
 
+  const handleLogout = () => {
+    if (userRole === 'attendee') {
+      const confirmLogout = window.confirm('ATENCIÓN: Si cierras sesión, tu gafete virtual se desvinculará de este dispositivo. Para volver a entrar, necesitarás contactar a un Administrador para que resetee tu acceso.\n\n¿Estás seguro de que deseas salir?');
+      if (!confirmLogout) return;
+    }
+    signOut();
+  };
+
   const viewTitles: Record<View, string> = {
     DASHBOARD: 'Inicio', AGENDA: 'Agenda', SPEAKERS: 'Ponentes', EXHIBITORS: 'Expositores', SCANNER: 'Escanear QR', PROFILE: 'Mi Perfil', GAMIFICATION: 'Gamificación', INFO: 'Información', ADMIN: 'Panel de Administración', MY_STAND: 'Mi Stand', NEWS: 'Noticias',
   };
 
   return (
     <div className="min-h-screen font-sans text-slate-900">
-      <Header title={viewTitles[activeView]} onLogout={signOut} />
+      <Header title={viewTitles[activeView]} onLogout={handleLogout} />
       <ToastContainer />
       <main className="pb-32">
         <Suspense fallback={<LoadingSpinner />}>

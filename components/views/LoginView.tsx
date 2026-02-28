@@ -6,7 +6,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 
 export const LoginView: React.FC = () => {
     const [isScannerMode, setIsScannerMode] = useState(true);
-    const [email, setEmail] = useState('');
+    const [loginInput, setLoginInput] = useState(''); // Accepts username or email
     const [password, setPassword] = useState('');
     const { showToast } = useToast();
     const [loading, setLoading] = useState(false);
@@ -124,7 +124,11 @@ export const LoginView: React.FC = () => {
         e.preventDefault();
         setLoading(true);
         try {
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            // If the user typed a username (no @), map it to the virtual staff email
+            const resolvedEmail = loginInput.includes('@')
+                ? loginInput
+                : `${loginInput.trim().toLowerCase()}@staff.cismm.com`;
+            const { error } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
             if (error) throw error;
             showToast('Acceso correcto.', 'success');
         } catch (error: any) {
@@ -197,13 +201,13 @@ export const LoginView: React.FC = () => {
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Correo Corporativo</label>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Usuario / Correo Corporativo</label>
                                     <input
-                                        type="email"
+                                        type="text"
                                         required
-                                        value={email}
-                                        placeholder="admin@cismm.com"
-                                        onChange={(e) => setEmail(e.target.value)}
+                                        value={loginInput}
+                                        placeholder="juan.garcia  o  admin@cismm.com"
+                                        onChange={(e) => setLoginInput(e.target.value)}
                                         className="w-full p-3 bg-gray-50 border border-gray-200 rounded-md focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all text-slate-900"
                                     />
                                 </div>

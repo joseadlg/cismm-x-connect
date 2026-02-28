@@ -16,28 +16,39 @@ serve(async (req) => {
     try {
         const { action, payload } = await req.json();
 
-        // 1. Verify Authentication of the requester (must be admin)
-        const supabaseClient = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-            { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-        );
-
-        // Get the user who sent the request
-        const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-        if (authError || !user) throw new Error('Unauthorized');
-
-        // Make sure they have the 'admin' role in profiles
-        const { data: profile } = await supabaseClient.from('profiles').select('role').eq('id', user.id).single();
-        if (profile?.role !== 'admin') {
-            throw new Error('Forbidden. Solo administradores pueden realizar esta acción.');
-        }
-
-        // 2. Initialize Service Role client to bypass RLS and create users silently
+        // Initialize Service Role client (bypasses RLS, used to manage users)
         const supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         );
+
+        // 1. Verify Authentication - extract JWT and verify via service role client
+        const authHeader = req.headers.get('Authorization');
+        if (!authHeader) {
+            return new Response(JSON.stringify({ error: 'Unauthorized: No auth header' }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 200,
+            });
+        }
+
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+        if (authError || !user) {
+            return new Response(JSON.stringify({ error: 'Unauthorized: ' + (authError?.message ?? 'no user') }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 200,
+            });
+        }
+
+        // 2. Make sure they have the 'admin' role in profiles
+        const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
+        if (profile?.role !== 'admin') {
+            return new Response(JSON.stringify({ error: `Forbidden. Rol actual: ${profile?.role ?? 'sin perfil'}` }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 200,
+            });
+        }
 
         // 3. Process actions
         if (action === 'CREATE_STAFF') {
@@ -47,19 +58,21 @@ serve(async (req) => {
             const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
                 email,
                 password,
-                email_confirm: true, // Auto-confirm
+                email_confirm: true,
                 user_metadata: { full_name: name }
             });
 
             if (createError) {
-                // If already exists, we will fail cleanly
-                throw new Error('El usuario ya existe o hubo un error en Auth: ' + createError.message);
+                return new Response(JSON.stringify({ error: 'Error en Auth: ' + createError.message }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    status: 200,
+                });
             }
 
             // Automatically create their profile
             if (authData.user) {
                 let defaultDeviceLimit = role === 'exhibitor' ? 3 : 1;
-                if (role === 'admin') defaultDeviceLimit = 999; // Arbitrary high number for admin fallback
+                if (role === 'admin') defaultDeviceLimit = 999;
 
                 const { error: profileError } = await supabaseAdmin.from('profiles').insert([
                     {
@@ -70,7 +83,12 @@ serve(async (req) => {
                         max_devices: maxDevices !== undefined ? maxDevices : defaultDeviceLimit
                     }
                 ]);
-                if (profileError) throw profileError;
+                if (profileError) {
+                    return new Response(JSON.stringify({ error: 'Error al crear perfil: ' + profileError.message }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                        status: 200,
+                    });
+                }
             }
 
             return new Response(JSON.stringify({ success: true, user: authData.user }), {
@@ -79,15 +97,15 @@ serve(async (req) => {
             });
         }
 
-        return new Response(JSON.stringify({ error: 'Acción no válida' }), {
+        return new Response(JSON.stringify({ error: 'Accion no valida' }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
+            status: 200,
         });
 
     } catch (error) {
         return new Response(JSON.stringify({ error: error.message }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
+            status: 200,
         });
     }
 });

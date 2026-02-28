@@ -80,18 +80,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
   useEffect(() => {
     const generateQR = async () => {
       if (qrRef.current) {
-        const secureToken = await generateSecureToken({
-          id: user.id,
-          name: user.name,
-          title: user.title,
-          company: user.company,
-          photoUrl: user.photoUrl,
-          interests: user.interests
-        });
+        let qrValue = '';
+
+        if (user.role === 'exhibitor' && user.exhibitorId) {
+          qrValue = JSON.stringify({ exhibitorId: user.exhibitorId });
+        } else {
+          qrValue = await generateSecureToken({
+            id: user.id,
+            name: user.name,
+            title: user.title,
+            company: user.company,
+            photoUrl: user.photoUrl,
+            interests: user.interests
+          });
+        }
 
         new QRious({
           element: qrRef.current,
-          value: secureToken,
+          value: qrValue,
           size: 200,
           background: 'white',
           foreground: '#0D2A4C'
@@ -135,7 +141,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
         <p className="text-gray-600">{user.company}</p>
         <div className="mt-4">
           <h3 className="font-semibold text-brand-primary mb-2">Mi Código QR</h3>
-          <p className="text-sm text-gray-500 mb-2">Muestra este código para que otros te añadan.</p>
+          <p className="text-sm text-gray-500 mb-2">
+            {user.role === 'exhibitor'
+              ? 'Muestra este código para que los asistentes registren su visita a tu stand.'
+              : 'Muestra este código para que otros te añadan.'}
+          </p>
           <canvas ref={qrRef} className="mx-auto"></canvas>
         </div>
       </div>

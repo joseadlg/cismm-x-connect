@@ -80,3 +80,17 @@ export interface NewsPost {
 }
 
 export type View = 'DASHBOARD' | 'AGENDA' | 'SPEAKERS' | 'EXHIBITORS' | 'SCANNER' | 'PROFILE' | 'GAMIFICATION' | 'INFO' | 'ADMIN' | 'MY_STAND' | 'NEWS';
+
+export interface SessionRating {
+  id: number;
+  userId: string;
+  sessionId: number;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+}
+
+export interface AdminSessionRating extends SessionRating {
+  userName: string;
+  sessionTitle: string;
+}

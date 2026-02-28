@@ -1,9 +1,11 @@
 
 import React, { useState } from 'react';
 import { Speaker, Exhibitor, AgendaSession, LeaderboardEntry, UserProfile } from '../../types';
-import { ChevronDownIcon, PlusCircleIcon, PencilIcon, TrashIcon, LockOpenIcon } from '../Icons';
+import { ChevronDownIcon, PlusCircleIcon, PencilIcon, TrashIcon, LockOpenIcon, StarIcon } from '../Icons';
 import { Modal } from '../common/Modal';
 import { supabase } from '../../utils/supabase';
+import { AnalyticsView } from './AnalyticsView';
+import { AdminSessionRating } from '../../types';
 
 interface AdminViewProps {
     speakers: Speaker[];
@@ -70,6 +72,20 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                         const { data: newSpeaker, error } = await supabase.from('speakers').insert(dbData).select().single();
                         if (error) throw error;
                         setSpeakers(prev => [...prev, { ...data, id: newSpeaker.id, social: data.social || {} }]);
+                        // If createAccount flag is set, create a login account using username-based virtual email
+                        if (data.createAccount && data.username) {
+                            const virtualEmail = `${data.username}@staff.cismm.com`;
+                            const { data: { session } } = await supabase.auth.getSession();
+                            const { data: edgeData, error: edgeError } = await supabase.functions.invoke('manage-users', {
+                                headers: { Authorization: `Bearer ${session?.access_token}` },
+                                body: { action: 'CREATE_STAFF', payload: { email: virtualEmail, password: data.password, name: data.name, role: 'speaker', maxDevices: 1 } }
+                            });
+                            if (edgeError || edgeData?.error) {
+                                alert(`Ponente guardado, pero hubo un error creando su cuenta: ${edgeData?.error || edgeError?.message}`);
+                            } else {
+                                alert(`\u00a1Cuenta de acceso creada!\n\nUsuario: ${data.username}\nContrase\u00f1a: ${data.password}\n\nEntrega estas credenciales al ponente. Inicia sesi\u00f3n con el usuario en la pesta\u00f1a de Acceso Privilegiado.`);
+                            }
+                        }
                     } else {
                         const { error } = await supabase.from('speakers').update(dbData).eq('id', data.id);
                         if (error) throw error;
@@ -84,6 +100,20 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                         const { data: newExhibitor, error } = await supabase.from('exhibitors').insert(dbData).select().single();
                         if (error) throw error;
                         setExhibitors(prev => [...prev, { ...data, id: newExhibitor.id }]);
+                        // If createAccount flag is set, create a login account using username-based virtual email
+                        if (data.createAccount && data.username) {
+                            const virtualEmail = `${data.username}@staff.cismm.com`;
+                            const { data: { session } } = await supabase.auth.getSession();
+                            const { data: edgeData, error: edgeError } = await supabase.functions.invoke('manage-users', {
+                                headers: { Authorization: `Bearer ${session?.access_token}` },
+                                body: { action: 'CREATE_STAFF', payload: { email: virtualEmail, password: data.password, name: data.name, role: 'exhibitor', exhibitorId: newExhibitor.id, maxDevices: 3 } }
+                            });
+                            if (edgeError || edgeData?.error) {
+                                alert(`Expositor guardado, pero hubo un error creando su cuenta: ${edgeData?.error || edgeError?.message}`);
+                            } else {
+                                alert(`\u00a1Cuenta de acceso creada!\n\nUsuario: ${data.username}\nContrase\u00f1a: ${data.password}\n\nEntrega estas credenciales al expositor. Inicia sesi\u00f3n con el usuario en la pesta\u00f1a de Acceso Privilegiado.`);
+                            }
+                        }
                     } else {
                         const { error } = await supabase.from('exhibitors').update(dbData).eq('id', data.id);
                         if (error) throw error;
@@ -246,6 +276,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
 
     return (
         <div className="p-4">
+            <AdminSection title="Analíticas en Vivo">
+                <AnalyticsView />
+            </AdminSection>
+
+            <AdminSection title="Calificaciones de Sesiones (Auditoría)">
+                <AdminRatingsView sessions={agendaSessions} />
+            </AdminSection>
+
             <AdminSection title={`Ponentes (${speakers.length})`}>
                 <ManagementList type="speaker" items={speakers} onEdit={openModal} onDelete={handleDelete} displayField="name" />
             </AdminSection>
@@ -327,16 +365,53 @@ const ManagementList: React.FC<{ type: any, items: any[], onEdit: any, onDelete:
 );
 
 const SpeakerForm: React.FC<{ item?: Speaker, onSave: (data: any) => void, onClose: () => void }> = ({ item, onSave, onClose }) => {
+    const generatePassword = () => {
+        const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+        let pw = ''; for (let i = 0; i < 12; i++) pw += chars.charAt(Math.floor(Math.random() * chars.length)); return pw;
+    };
+    const toUsername = (name: string) => name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
     const [formData, setFormData] = useState(item || { name: '', title: '', company: '', bio: '', photoUrl: '' });
+    const [password, setPassword] = useState(generatePassword());
+    const [createAccount, setCreateAccount] = useState(!item);
+    const username = toUsername(formData.name || '');
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setFormData({ ...formData, [e.target.name]: e.target.value });
     return (
         <Modal title={item ? 'Editar Ponente' : 'Añadir Ponente'} onClose={onClose}>
-            <form onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="p-4 space-y-4">
-                <FormField label="Nombre" id="name" value={formData.name} onChange={handleChange} />
-                <FormField label="Cargo" id="title" value={formData.title} onChange={handleChange} />
-                <FormField label="Empresa" id="company" value={formData.company} onChange={handleChange} />
-                <FormField label="URL de Foto" id="photoUrl" value={formData.photoUrl} onChange={handleChange} />
-                <FormField label="Biografía" id="bio" value={formData.bio} onChange={handleChange} type="textarea" />
+            <form onSubmit={(e) => { e.preventDefault(); onSave({ ...formData, username, password, createAccount }); }} className="p-4 space-y-4">
+                <FormField label="Nombre *" id="name" value={formData.name} onChange={handleChange} required={true} />
+                <FormField label="Cargo" id="title" value={formData.title} onChange={handleChange} required={false} />
+                <FormField label="Empresa" id="company" value={formData.company} onChange={handleChange} required={false} />
+                <FormField label="URL de Foto" id="photoUrl" value={formData.photoUrl} onChange={handleChange} required={false} />
+                <FormField label="Biografía" id="bio" value={formData.bio} onChange={handleChange} type="textarea" required={false} />
+                {!item && (
+                    <div className="border-t pt-4 mt-2 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-gray-700">Crear acceso a la App</p>
+                                <p className="text-xs text-gray-500">El ponente podrá iniciar sesión con usuario y contraseña.</p>
+                            </div>
+                            <input type="checkbox" checked={createAccount} onChange={e => setCreateAccount(e.target.checked)} className="w-5 h-5 rounded accent-brand-accent" />
+                        </div>
+                        {createAccount && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Usuario generado</label>
+                                    <div className="mt-1 flex items-center rounded-md bg-blue-50 border border-blue-200 px-3 py-2">
+                                        <span className="font-mono text-blue-800 text-sm">{username || <span className="text-gray-400 italic">Escribe el nombre arriba...</span>}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">Este será su nombre de usuario para iniciar sesión.</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Contraseña (Autogenerada)</label>
+                                    <div className="mt-1 flex rounded-md shadow-sm">
+                                        <input type="text" readOnly className="flex-1 block w-full border-gray-300 rounded-l-md bg-gray-50 sm:text-sm px-3 py-2 font-mono" value={password} />
+                                        <button type="button" onClick={() => setPassword(generatePassword())} className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm hover:bg-gray-100">Regenerar</button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
                 <div className="flex justify-end space-x-2 pt-4">
                     <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded">Cancelar</button>
                     <button type="submit" className="px-4 py-2 bg-brand-accent text-white rounded">Guardar</button>
@@ -347,22 +422,59 @@ const SpeakerForm: React.FC<{ item?: Speaker, onSave: (data: any) => void, onClo
 };
 
 const ExhibitorForm: React.FC<{ item?: Exhibitor, categories: string[], onSave: (data: any) => void, onClose: () => void }> = ({ item, categories, onSave, onClose }) => {
+    const generatePassword = () => {
+        const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+        let pw = ''; for (let i = 0; i < 12; i++) pw += chars.charAt(Math.floor(Math.random() * chars.length)); return pw;
+    };
+    const toUsername = (name: string) => name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
     const [formData, setFormData] = useState(item || { name: '', description: '', contact: '', website: '', standNumber: '', category: categories.length > 0 ? categories[0] : '', logoUrl: '' });
+    const [password, setPassword] = useState(generatePassword());
+    const [createAccount, setCreateAccount] = useState(!item);
+    const username = toUsername(formData.name || '');
     const handleChange = (e: React.ChangeEvent<any>) => setFormData({ ...formData, [e.target.name]: e.target.value });
     return (
         <Modal title={item ? 'Editar Expositor' : 'Añadir Expositor'} onClose={onClose}>
-            <form onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="p-4 space-y-4">
-                <FormField label="Nombre" id="name" value={formData.name} onChange={handleChange} />
-                <FormField label="URL de Logo" id="logoUrl" value={formData.logoUrl} onChange={handleChange} />
-                <FormField label="Descripción" id="description" value={formData.description} onChange={handleChange} type="textarea" />
-                <FormField label="Contacto (email)" id="contact" value={formData.contact} onChange={handleChange} />
-                <FormField label="Sitio Web" id="website" value={formData.website} onChange={handleChange} />
-                <FormField label="Nº de Stand" id="standNumber" value={formData.standNumber} onChange={handleChange} />
-                <FormField label="Categoría" id="category" value={formData.category} onChange={handleChange}>
+            <form onSubmit={(e) => { e.preventDefault(); onSave({ ...formData, username, password, createAccount }); }} className="p-4 space-y-4">
+                <FormField label="Nombre *" id="name" value={formData.name} onChange={handleChange} required={true} />
+                <FormField label="URL de Logo" id="logoUrl" value={formData.logoUrl} onChange={handleChange} required={false} />
+                <FormField label="Descripción" id="description" value={formData.description} onChange={handleChange} type="textarea" required={false} />
+                <FormField label="Contacto (email del stand)" id="contact" value={formData.contact} onChange={handleChange} required={false} />
+                <FormField label="Sitio Web" id="website" value={formData.website} onChange={handleChange} required={false} />
+                <FormField label="Nº de Stand" id="standNumber" value={formData.standNumber} onChange={handleChange} required={false} />
+                <FormField label="Categoría" id="category" value={formData.category} onChange={handleChange} required={false}>
                     {categories.map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                     ))}
                 </FormField>
+                {!item && (
+                    <div className="border-t pt-4 mt-2 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-gray-700">Crear acceso a la App</p>
+                                <p className="text-xs text-gray-500">El expositor podrá iniciar sesión con usuario y contraseña.</p>
+                            </div>
+                            <input type="checkbox" checked={createAccount} onChange={e => setCreateAccount(e.target.checked)} className="w-5 h-5 rounded accent-brand-accent" />
+                        </div>
+                        {createAccount && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Usuario generado</label>
+                                    <div className="mt-1 flex items-center rounded-md bg-blue-50 border border-blue-200 px-3 py-2">
+                                        <span className="font-mono text-blue-800 text-sm">{username || <span className="text-gray-400 italic">Escribe el nombre arriba...</span>}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">Este será su nombre de usuario para iniciar sesión.</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Contraseña (Autogenerada)</label>
+                                    <div className="mt-1 flex rounded-md shadow-sm">
+                                        <input type="text" readOnly className="flex-1 block w-full border-gray-300 rounded-l-md bg-gray-50 sm:text-sm px-3 py-2 font-mono" value={password} />
+                                        <button type="button" onClick={() => setPassword(generatePassword())} className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm hover:bg-gray-100">Regenerar</button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
                 <div className="flex justify-end space-x-2 pt-4">
                     <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded">Cancelar</button>
                     <button type="submit" className="px-4 py-2 bg-brand-accent text-white rounded">Guardar</button>
@@ -488,10 +600,96 @@ const UserAccountForm: React.FC<{ item?: any, exhibitors: Exhibitor[], onSave: (
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-6">
-                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded text-gray-800 font-medium">Cancelar</button>
                     <button type="submit" className="px-4 py-2 bg-brand-primary text-white rounded font-medium hover:bg-blue-900">Crear Cuenta</button>
                 </div>
             </form>
         </Modal>
+    );
+};
+
+const AdminRatingsView: React.FC<{ sessions: AgendaSession[] }> = ({ sessions }) => {
+    const [ratings, setRatings] = useState<AdminSessionRating[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    React.useEffect(() => {
+        const fetchRatings = async () => {
+            setLoading(true);
+            try {
+                // Fetch ratings joined with the profiles table to get the real user's name
+                const { data, error } = await supabase
+                    .from('session_ratings')
+                    .select(`
+                        id,
+                        user_id,
+                        session_id,
+                        rating,
+                        comment,
+                        created_at,
+                        profiles ( name )
+                    `)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                if (data) {
+                    const formatted = data.map((r: any) => ({
+                        id: r.id,
+                        userId: r.user_id,
+                        sessionId: r.session_id,
+                        rating: r.rating,
+                        comment: r.comment,
+                        createdAt: r.created_at,
+                        userName: r.profiles?.name || 'Usuario Estándar',
+                        sessionTitle: sessions.find(s => s.id === r.session_id)?.title || 'Sesión Desconocida'
+                    }));
+                    setRatings(formatted);
+                }
+            } catch (err) {
+                console.error("Error fetching ratings:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchRatings();
+    }, [sessions]);
+
+    if (loading) return <div className="text-center py-4 text-gray-500">Cargando la bóveda de calificaciones...</div>;
+
+    if (ratings.length === 0) return <div className="text-center py-4 text-gray-500 bg-gray-50 rounded-lg">Aún no hay calificaciones registradas.</div>;
+
+    return (
+        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+            <div className="bg-yellow-50 p-3 rounded text-sm text-yellow-800 border border-yellow-200 mb-4 shadow-sm">
+                <b>Confidencial:</b> Los asistentes ven la encuesta como anónima para incentivar feedback honesto. Como Administrador, tú sí puedes ver exactamente quién dejó cada comentario.
+            </div>
+
+            {ratings.map(rating => (
+                <div key={rating.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
+                    <div className="flex justify-between items-start mb-2">
+                        <div>
+                            <span className="font-bold text-brand-primary">{rating.sessionTitle}</span>
+                        </div>
+                        <div className="flex space-x-1">
+                            {[1, 2, 3, 4, 5].map(star => (
+                                <StarIcon key={star} filled={star <= rating.rating} className="w-4 h-4 text-brand-accent" />
+                            ))}
+                        </div>
+                    </div>
+
+                    {rating.comment && (
+                        <p className="text-gray-700 text-sm bg-gray-50 p-3 rounded-lg flex-1 mb-2 italic">"{rating.comment}"</p>
+                    )}
+
+                    <div className="mt-auto flex justify-between items-center text-xs text-gray-400 font-medium pt-2 border-t border-gray-50">
+                        <span className="flex items-center text-brand-secondary">
+                            <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                            {rating.userName}
+                        </span>
+                        <span>{new Date(rating.createdAt).toLocaleDateString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                </div>
+            ))}
+        </div>
     );
 };

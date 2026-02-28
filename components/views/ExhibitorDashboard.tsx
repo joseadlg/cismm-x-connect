@@ -28,12 +28,7 @@ export const ExhibitorDashboard: React.FC<ExhibitorDashboardProps> = ({ user }) 
                     </div>
                 </div>
 
-                <div className="bg-gray-50 p-4 rounded-lg text-left">
-                    <p className="text-sm text-gray-500 font-semibold uppercase tracking-wider mb-1">Datos del QR:</p>
-                    <pre className="text-xs bg-gray-800 text-green-400 p-2 rounded overflow-x-auto">
-                        {JSON.stringify(exhibitorData, null, 2)}
-                    </pre>
-                </div>
+
             </div>
 
             <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">

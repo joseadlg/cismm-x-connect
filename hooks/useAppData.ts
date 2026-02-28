@@ -16,6 +16,7 @@ export const useAppData = (userId: string | undefined) => {
     const [myAgenda, setMyAgenda] = useState<number[]>([]);
     const [visitedExhibitors, setVisitedExhibitors] = useState<number[]>([]);
     const [checkedInSessions, setCheckedInSessions] = useState<number[]>([]);
+    const [myRatings, setMyRatings] = useState<number[]>([]);
 
     const fetchPublicData = async () => {
         try {
@@ -27,7 +28,7 @@ export const useAppData = (userId: string | undefined) => {
                 supabase.from('agenda_sessions').select('*, session_speakers(speaker_id)'),
                 supabase.from('exhibitor_categories').select('*'),
                 supabase.from('news_posts').select('*').order('created_at', { ascending: false }),
-                supabase.from('profiles').select('name, points, photo_url').order('points', { ascending: false }).limit(10)
+                supabase.from('profiles').select('name, points, photo_url').eq('role', 'attendee').order('points', { ascending: false }).limit(10)
             ]);
 
             if (sData) setSpeakers(sData.map(s => ({
@@ -54,15 +55,17 @@ export const useAppData = (userId: string | undefined) => {
     const fetchUserData = async (uid: string) => {
         try {
             const [
-                { data: userAgenda }, { data: userVisits }, { data: userCheckins }
+                { data: userAgenda }, { data: userVisits }, { data: userCheckins }, { data: userRatings }
             ] = await Promise.all([
                 supabase.from('user_agenda').select('session_id').eq('user_id', uid),
                 supabase.from('user_visited_exhibitors').select('exhibitor_id').eq('user_id', uid),
-                supabase.from('user_session_checkins').select('session_id').eq('user_id', uid)
+                supabase.from('user_session_checkins').select('session_id').eq('user_id', uid),
+                supabase.from('session_ratings').select('session_id').eq('user_id', uid)
             ]);
             if (userAgenda) setMyAgenda(userAgenda.map(u => u.session_id));
             if (userVisits) setVisitedExhibitors(userVisits.map(u => u.exhibitor_id));
             if (userCheckins) setCheckedInSessions(userCheckins.map(u => u.session_id));
+            if (userRatings) setMyRatings(userRatings.map(u => u.session_id));
         } catch (err) {
             console.error("Error fetching user data:", err);
         }
@@ -181,10 +184,10 @@ export const useAppData = (userId: string | undefined) => {
 
     return {
         speakers, exhibitors, agendaSessions, leaderboard, exhibitorCategories, newsPosts,
-        myAgenda, visitedExhibitors, checkedInSessions, loading, unreadNewsCount,
+        myAgenda, visitedExhibitors, checkedInSessions, myRatings, loading, unreadNewsCount,
         setSpeakers, setExhibitors, setAgendaSessions, setExhibitorCategories, setNewsPosts,
         setMyAgenda, setVisitedExhibitors, setCheckedInSessions, setLeaderboard,
-        setUnreadNewsCount,
+        setUnreadNewsCount, setMyRatings,
         refreshData
     };
 };
