@@ -83,24 +83,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
         let qrValue = '';
 
         if (user.role === 'exhibitor' && user.exhibitorId) {
-          qrValue = JSON.stringify({ exhibitorId: user.exhibitorId });
+          // Exhibitor QR: minimal data for stand check-in
+          qrValue = JSON.stringify({ exhibitorId: user.exhibitorId, name: user.company || user.name });
         } else {
-          qrValue = await generateSecureToken({
-            id: user.id,
-            name: user.name,
-            title: user.title,
-            company: user.company,
-            photoUrl: user.photoUrl,
-            interests: user.interests
-          });
+          // Attendee/Speaker QR: just id + name — keeps QR simple and scannable
+          qrValue = JSON.stringify({ id: user.id, name: user.name });
         }
 
         new QRious({
           element: qrRef.current,
           value: qrValue,
-          size: 200,
+          size: 250,
           background: 'white',
-          foreground: '#0D2A4C'
+          foreground: '#0D2A4C',
+          level: 'M', // Medium error correction — balances reliability vs density
+          padding: 10,
         });
       }
     };
