@@ -11,18 +11,37 @@ import { BottomNav } from './components/common/BottomNav';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
-const DashboardView = lazy(() => import('./components/views/DashboardView').then(module => ({ default: module.DashboardView })));
-const AgendaView = lazy(() => import('./components/views/AgendaView').then(module => ({ default: module.AgendaView })));
-const SpeakersView = lazy(() => import('./components/views/SpeakersView').then(module => ({ default: module.SpeakersView })));
-const ExhibitorsView = lazy(() => import('./components/views/ExhibitorsView').then(module => ({ default: module.ExhibitorsView })));
-const ScannerView = lazy(() => import('./components/views/ScannerView').then(module => ({ default: module.ScannerView })));
-const ProfileView = lazy(() => import('./components/views/ProfileView').then(module => ({ default: module.ProfileView })));
-const GamificationView = lazy(() => import('./components/views/GamificationView').then(module => ({ default: module.GamificationView })));
+// Helper to auto-reload the page once if a chunk fails to load (e.g. after a new deployment changes chunk hashes)
+const lazyWithRetry = (componentImport: () => Promise<any>) =>
+  lazy(async () => {
+    const pageHasAlreadyBeenForceRefreshed = JSON.parse(
+      window.sessionStorage.getItem('page-has-been-force-refreshed') || 'false'
+    );
+    try {
+      const component = await componentImport();
+      window.sessionStorage.setItem('page-has-been-force-refreshed', 'false');
+      return component;
+    } catch (error) {
+      if (!pageHasAlreadyBeenForceRefreshed) {
+        window.sessionStorage.setItem('page-has-been-force-refreshed', 'true');
+        return window.location.reload();
+      }
+      throw error;
+    }
+  }) as any;
 
-const InfoView = lazy(() => import('./components/views/InfoView').then(module => ({ default: module.InfoView })));
-const AdminView = lazy(() => import('./components/views/AdminView').then(module => ({ default: module.AdminView })));
-const ExhibitorDashboard = lazy(() => import('./components/views/ExhibitorDashboard').then(module => ({ default: module.ExhibitorDashboard })));
-const NewsBoard = lazy(() => import('./components/views/NewsBoard').then(module => ({ default: module.NewsBoard })));
+const DashboardView = lazyWithRetry(() => import('./components/views/DashboardView').then(module => ({ default: module.DashboardView })));
+const AgendaView = lazyWithRetry(() => import('./components/views/AgendaView').then(module => ({ default: module.AgendaView })));
+const SpeakersView = lazyWithRetry(() => import('./components/views/SpeakersView').then(module => ({ default: module.SpeakersView })));
+const ExhibitorsView = lazyWithRetry(() => import('./components/views/ExhibitorsView').then(module => ({ default: module.ExhibitorsView })));
+const ScannerView = lazyWithRetry(() => import('./components/views/ScannerView').then(module => ({ default: module.ScannerView })));
+const ProfileView = lazyWithRetry(() => import('./components/views/ProfileView').then(module => ({ default: module.ProfileView })));
+const GamificationView = lazyWithRetry(() => import('./components/views/GamificationView').then(module => ({ default: module.GamificationView })));
+
+const InfoView = lazyWithRetry(() => import('./components/views/InfoView').then(module => ({ default: module.InfoView })));
+const AdminView = lazyWithRetry(() => import('./components/views/AdminView').then(module => ({ default: module.AdminView })));
+const ExhibitorDashboard = lazyWithRetry(() => import('./components/views/ExhibitorDashboard').then(module => ({ default: module.ExhibitorDashboard })));
+const NewsBoard = lazyWithRetry(() => import('./components/views/NewsBoard').then(module => ({ default: module.NewsBoard })));
 import { ToastContainer } from './components/ToastContainer';
 import { useToast } from './contexts/ToastContext';
 import { verifySecureToken } from './utils/security';
