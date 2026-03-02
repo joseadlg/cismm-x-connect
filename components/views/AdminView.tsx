@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Speaker, Exhibitor, AgendaSession, LeaderboardEntry, UserProfile } from '../../types';
 import { ChevronDownIcon, PlusCircleIcon, PencilIcon, TrashIcon, LockOpenIcon, StarIcon } from '../Icons';
 import { Modal } from '../common/Modal';
@@ -52,6 +52,45 @@ const FormField: React.FC<{ label: string, id: string, value: string, onChange: 
 
 export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agendaSessions, setSpeakers, setExhibitors, setAgendaSessions, contacts, setContacts, exhibitorCategories, setExhibitorCategories }) => {
     const [modalConfig, setModalConfig] = useState<{ type: 'speaker' | 'exhibitor' | 'session' | 'category' | 'userAccount' | null, item?: any }>({ type: null });
+
+    // Fetch ALL profiles from the database for user management
+    const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+    const [loadingUsers, setLoadingUsers] = useState(true);
+
+    const fetchAllUsers = async () => {
+        setLoadingUsers(true);
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('name');
+            if (error) throw error;
+            if (data) {
+                setAllUsers(data.map((u: any) => ({
+                    id: u.id,
+                    name: u.name,
+                    role: u.role,
+                    company: u.company || '',
+                    title: u.title || '',
+                    photoUrl: u.photo_url || '',
+                    points: u.points || 0,
+                    deviceId: u.device_id || '',
+                    maxDevices: u.max_devices || 1,
+                    registeredDevices: u.registered_devices || [],
+                    email: u.email || '',
+                    phone: u.phone || '',
+                })));
+            }
+        } catch (err) {
+            console.error('Error fetching users:', err);
+        } finally {
+            setLoadingUsers(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchAllUsers();
+    }, []);
 
     const openModal = (type: 'speaker' | 'exhibitor' | 'session' | 'category' | 'userAccount', item?: any) => {
         setModalConfig({ type, item: item || null });
@@ -247,14 +286,15 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
     };
 
     const handleUnlinkDevice = async (userId: string) => {
-        if (!window.confirm('¿Desvincular dispositivo de este usuario? Podrá iniciar sesión en un nuevo dispositivo.')) return;
+        if (!window.confirm('¿Desvincular dispositivo de este usuario? Podrá iniciar sesión / escanear su gafete en un nuevo dispositivo.')) return;
 
         try {
-            const { error } = await supabase.from('profiles').update({ registered_devices: [] }).eq('id', userId);
+            const { error } = await supabase.from('profiles').update({ registered_devices: [], device_id: null }).eq('id', userId);
             if (error) throw error;
 
-            setContacts(prev => prev.map(u => u.id === userId ? { ...u, deviceId: undefined, registeredDevices: [] } : u));
-            alert('Dispositivos reseteados con éxito.');
+            // Refresh the user list from DB
+            await fetchAllUsers();
+            alert('✅ Dispositivos reseteados con éxito. El usuario puede volver a escanear su gafete.');
         } catch (err: any) {
             alert('Error al resetear dispositivos: ' + err.message);
         }
@@ -300,44 +340,54 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                 <ManagementList type="session" items={agendaSessions} onEdit={openModal} onDelete={handleDelete} displayField="title" />
             </AdminSection>
 
-            <AdminSection title={`Usuarios y Dispositivos (${contacts.length})`}>
+            <AdminSection title={`Usuarios y Dispositivos (${allUsers.length})`}>
                 <div className="mb-4">
-                    <button onClick={() => openModal('userAccount')} className="flex items-center text-brand-accent mb-4 p-2 rounded hover:bg-gray-100">
-                        <PlusCircleIcon /><span className="ml-2 font-semibold">Crear Cuenta (Staff)</span>
-                    </button>
+                    <div className="flex items-center space-x-2 mb-4">
+                        <button onClick={() => openModal('userAccount')} className="flex items-center text-brand-accent p-2 rounded hover:bg-gray-100">
+                            <PlusCircleIcon /><span className="ml-2 font-semibold">Crear Cuenta (Staff)</span>
+                        </button>
+                        <button onClick={fetchAllUsers} className="text-gray-500 hover:text-brand-accent p-2 rounded hover:bg-gray-100 text-sm">
+                            🔄 Actualizar lista
+                        </button>
+                    </div>
                     <p className="text-gray-500 text-sm mb-4">
-                        Añade Administradores, Expositores o Ponentes. Se les asignará una contraseña única. También puedes revisar qué usuarios tienen dispositivos registrados.
+                        Gestiona todos los usuarios registrados. Puedes resetear dispositivos para que los asistentes puedan volver a escanear su gafete QR.
                     </p>
                 </div>
-                <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                    {contacts.map(user => (
-                        <div key={user.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100">
-                            <div>
-                                <span className={`font-medium px-2 py-0.5 rounded text-xs mr-2 ${user.role === 'admin' ? 'bg-red-100 text-red-800' : user.role === 'exhibitor' ? 'bg-blue-100 text-blue-800' : user.role === 'speaker' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>
-                                    {user.role.toUpperCase()}
-                                </span>
-                                <span className="text-gray-800 font-bold">{user.name}</span>
-                                {user.company && <span className="text-xs text-gray-500 block">{user.company} - {user.title}</span>}
-                                {user.registeredDevices && user.registeredDevices.length > 0 ? (
-                                    <span className="text-xs text-brand-danger flex items-center mt-1">📱 {user.registeredDevices.length} / {user.maxDevices || 1} Disp. Vinculados</span>
-                                ) : (
-                                    <span className="text-xs text-gray-500 flex items-center mt-1">✓ Sin dispositivos limitantes aún</span>
-                                )}
-                            </div>
-                            <div className="flex space-x-2">
-                                {(user.registeredDevices && user.registeredDevices.length > 0) && (
-                                    <button onClick={() => handleUnlinkDevice(user.id)} className="text-white bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded text-xs font-bold" title="Borrar historial de dispositivos de esta cuenta">
-                                        Resetear Dispositivos
+                {loadingUsers ? (
+                    <p className="text-gray-500 text-center py-4">Cargando usuarios...</p>
+                ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                        {allUsers.map(user => (
+                            <div key={user.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                <div>
+                                    <span className={`font-medium px-2 py-0.5 rounded text-xs mr-2 ${user.role === 'admin' ? 'bg-red-100 text-red-800' : user.role === 'exhibitor' ? 'bg-blue-100 text-blue-800' : user.role === 'speaker' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>
+                                        {user.role.toUpperCase()}
+                                    </span>
+                                    <span className="text-gray-800 font-bold">{user.name}</span>
+                                    {user.email && <span className="text-xs text-gray-400 ml-2">{user.email}</span>}
+                                    {user.company && <span className="text-xs text-gray-500 block">{user.company} {user.title ? `- ${user.title}` : ''}</span>}
+                                    {(user.registeredDevices && user.registeredDevices.length > 0) || user.deviceId ? (
+                                        <span className="text-xs text-brand-danger flex items-center mt-1">📱 Dispositivo vinculado</span>
+                                    ) : (
+                                        <span className="text-xs text-gray-500 flex items-center mt-1">✓ Sin dispositivo vinculado</span>
+                                    )}
+                                </div>
+                                <div className="flex space-x-2">
+                                    {((user.registeredDevices && user.registeredDevices.length > 0) || user.deviceId) && (
+                                        <button onClick={() => handleUnlinkDevice(user.id)} className="text-white bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded text-xs font-bold" title="Resetear dispositivo para permitir re-escaneo del gafete">
+                                            Resetear
+                                        </button>
+                                    )}
+                                    <button onClick={() => handleDelete('user', user.id)} className="text-gray-400 hover:text-red-700 p-1">
+                                        <TrashIcon />
                                     </button>
-                                )}
-                                <button onClick={() => handleDelete('user', user.id)} className="text-gray-400 hover:text-red-700 p-1">
-                                    <TrashIcon />
-                                </button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                    {contacts.length === 0 && <p className="text-gray-500 text-sm">No hay usuarios registrados.</p>}
-                </div>
+                        ))}
+                        {allUsers.length === 0 && <p className="text-gray-500 text-sm">No hay usuarios registrados.</p>}
+                    </div>
+                )}
             </AdminSection>
 
             {modalConfig.type && renderForm()}
