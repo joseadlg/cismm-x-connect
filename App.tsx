@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { View, UserProfile, Speaker, Exhibitor, AgendaSession, LeaderboardEntry, UserRole, NewsPost } from './types';
 import { INITIAL_EXHIBITOR_CATEGORIES } from './constants';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -50,6 +50,57 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((pr
   };
 
   return [storedValue, setValue];
+};
+
+interface ViewRendererProps {
+  activeView: View;
+  myAgenda: number[];
+  agendaSessions: AgendaSession[];
+  setActiveView: (view: View) => void;
+  points: number;
+  speakers: Speaker[];
+  userRole: UserRole;
+  exhibitors: Exhibitor[];
+  CURRENT_USER: UserProfile;
+  toggleAgendaItem: (id: number) => void;
+  checkedInSessions: number[];
+  myRatings: number[];
+  handleSessionCheckIn: (id: number) => void;
+  setMyRatings: React.Dispatch<React.SetStateAction<number[]>>;
+  handleScanSuccess: (data: any) => void;
+  contacts: UserProfile[];
+  leaderboard: LeaderboardEntry[];
+  setSpeakers: React.Dispatch<React.SetStateAction<Speaker[]>>;
+  setExhibitors: React.Dispatch<React.SetStateAction<Exhibitor[]>>;
+  setAgendaSessions: React.Dispatch<React.SetStateAction<AgendaSession[]>>;
+  setContacts: (value: UserProfile[] | ((prevState: UserProfile[]) => UserProfile[])) => void;
+  exhibitorCategories: string[];
+  setExhibitorCategories: React.Dispatch<React.SetStateAction<string[]>>;
+  newsPosts: NewsPost[];
+  handleCreatePost: (data: any) => void;
+  handleDeletePost: (id: number) => void;
+}
+
+const ViewRenderer: React.FC<ViewRendererProps> = ({
+  activeView, myAgenda, agendaSessions, setActiveView, points, speakers, userRole, exhibitors, CURRENT_USER,
+  toggleAgendaItem, checkedInSessions, myRatings, handleSessionCheckIn, setMyRatings, handleScanSuccess,
+  contacts, leaderboard, setSpeakers, setExhibitors, setAgendaSessions, setContacts, exhibitorCategories,
+  setExhibitorCategories, newsPosts, handleCreatePost, handleDeletePost
+}) => {
+  switch (activeView) {
+    case 'DASHBOARD': return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={CURRENT_USER} />;
+    case 'AGENDA': return <AgendaView sessions={agendaSessions} myAgenda={myAgenda} toggleAgendaItem={toggleAgendaItem} speakers={speakers} user={CURRENT_USER} checkedInSessions={checkedInSessions} myRatings={myRatings} onCheckIn={handleSessionCheckIn} onRatingSubmitted={(sessionId) => setMyRatings(prev => [...prev, sessionId])} />;
+    case 'SPEAKERS': return <SpeakersView speakers={speakers} agendaSessions={agendaSessions} />;
+    case 'EXHIBITORS': return <ExhibitorsView exhibitors={exhibitors} />;
+    case 'SCANNER': return <ScannerView onScanSuccess={handleScanSuccess} />;
+    case 'PROFILE': return <ProfileView user={CURRENT_USER} contacts={contacts} setActiveView={setActiveView} />;
+    case 'GAMIFICATION': return <GamificationView leaderboard={leaderboard} userPoints={points} />;
+    case 'INFO': return <InfoView />;
+    case 'ADMIN': return userRole === 'admin' ? <AdminView speakers={speakers} exhibitors={exhibitors} agendaSessions={agendaSessions} setSpeakers={setSpeakers} setExhibitors={setExhibitors} setAgendaSessions={setAgendaSessions} contacts={contacts} setContacts={setContacts} exhibitorCategories={exhibitorCategories} setExhibitorCategories={setExhibitorCategories} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Se requieren permisos de administrador.</div>;
+    case 'MY_STAND': return userRole === 'exhibitor' ? <ExhibitorDashboard user={{ ...CURRENT_USER, role: userRole }} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Solo para expositores.</div>;
+    case 'NEWS': return <NewsBoard posts={newsPosts} userRole={userRole} currentUserName={CURRENT_USER.name} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
+    default: return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={CURRENT_USER} />;
+  }
 };
 
 const MainApp = () => {
@@ -292,22 +343,7 @@ const MainApp = () => {
 
   if (loading) return <LoadingSpinner />;
 
-  const renderView = () => {
-    switch (activeView) {
-      case 'DASHBOARD': return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={CURRENT_USER} />;
-      case 'AGENDA': return <AgendaView sessions={agendaSessions} myAgenda={myAgenda} toggleAgendaItem={toggleAgendaItem} speakers={speakers} user={CURRENT_USER} checkedInSessions={checkedInSessions} myRatings={myRatings} onCheckIn={handleSessionCheckIn} onRatingSubmitted={(sessionId) => setMyRatings(prev => [...prev, sessionId])} />;
-      case 'SPEAKERS': return <SpeakersView speakers={speakers} agendaSessions={agendaSessions} />;
-      case 'EXHIBITORS': return <ExhibitorsView exhibitors={exhibitors} />;
-      case 'SCANNER': return <ScannerView onScanSuccess={handleScanSuccess} />;
-      case 'PROFILE': return <ProfileView user={CURRENT_USER} contacts={contacts} setActiveView={setActiveView} />;
-      case 'GAMIFICATION': return <GamificationView leaderboard={leaderboard} userPoints={points} />;
-      case 'INFO': return <InfoView />;
-      case 'ADMIN': return userRole === 'admin' ? <AdminView speakers={speakers} exhibitors={exhibitors} agendaSessions={agendaSessions} setSpeakers={setSpeakers} setExhibitors={setExhibitors} setAgendaSessions={setAgendaSessions} contacts={contacts} setContacts={setContacts} exhibitorCategories={exhibitorCategories} setExhibitorCategories={setExhibitorCategories} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Se requieren permisos de administrador.</div>;
-      case 'MY_STAND': return userRole === 'exhibitor' ? <ExhibitorDashboard user={{ ...CURRENT_USER, role: userRole }} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Solo para expositores.</div>;
-      case 'NEWS': return <NewsBoard posts={newsPosts} userRole={userRole} currentUserName={CURRENT_USER.name} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
-      default: return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={CURRENT_USER} />;
-    }
-  };
+
 
   const handleLogout = () => {
     if (userRole === 'attendee') {
@@ -327,7 +363,16 @@ const MainApp = () => {
       <ToastContainer />
       <main className="pb-32">
         <Suspense fallback={<LoadingSpinner />}>
-          {renderView()}
+          <ViewRenderer
+            activeView={activeView} myAgenda={myAgenda} agendaSessions={agendaSessions} setActiveView={setActiveView}
+            points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} CURRENT_USER={CURRENT_USER}
+            toggleAgendaItem={toggleAgendaItem} checkedInSessions={checkedInSessions} myRatings={myRatings}
+            handleSessionCheckIn={handleSessionCheckIn} setMyRatings={setMyRatings} handleScanSuccess={handleScanSuccess}
+            contacts={contacts} leaderboard={leaderboard} setSpeakers={setSpeakers} setExhibitors={setExhibitors}
+            setAgendaSessions={setAgendaSessions} setContacts={setContacts} exhibitorCategories={exhibitorCategories}
+            setExhibitorCategories={setExhibitorCategories} newsPosts={newsPosts} handleCreatePost={handleCreatePost}
+            handleDeletePost={handleDeletePost}
+          />
         </Suspense>
       </main>
       <BottomNav activeView={activeView} setActiveView={setActiveView} unreadNewsCount={unreadNewsCount} />
