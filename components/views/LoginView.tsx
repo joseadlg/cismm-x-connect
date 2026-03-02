@@ -64,6 +64,9 @@ export const LoginView: React.FC = () => {
 
     const handleQrLogin = async (decodedText: string) => {
         try {
+            // DEBUG: Show exactly what the scanner read so we can fix the parser
+            alert("QR Leído:\n\n" + decodedText.substring(0, 300));
+
             setLoading(true);
             let contactData: any;
 
