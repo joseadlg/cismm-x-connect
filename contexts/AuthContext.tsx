@@ -82,6 +82,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 points: data.points || 0,
                 maxDevices: data.max_devices,
                 registeredDevices: currentDevices,
+                phone: data.phone || undefined,
+                email: data.email || undefined,
             } as UserProfile;
         } catch (err) {
             console.error('Unexpected error fetching profile:', err);

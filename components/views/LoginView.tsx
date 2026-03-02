@@ -134,7 +134,15 @@ export const LoginView: React.FC = () => {
 
                 if (signUpData.user) {
                     const { error: insertError } = await supabase.from('profiles').insert([
-                        { id: signUpData.user.id, name: userName, role: 'attendee' }
+                        {
+                            id: signUpData.user.id,
+                            name: userName,
+                            role: 'attendee',
+                            phone: contactData.phone || null,
+                            email: contactData.email || null,
+                            company: contactData.company || null,
+                            title: contactData.title || null
+                        }
                     ]);
                     if (insertError) {
                         console.error("Profile insert error:", insertError);
@@ -155,7 +163,15 @@ export const LoginView: React.FC = () => {
                 // But if the 'profiles' db table got wiped, their Auth user exists but profile is missing.
                 // Fail-safe: Ensure their row exists in 'profiles'
                 const { error: profileCheckError } = await supabase.from('profiles').upsert([
-                    { id: signInData.user.id, name: userName, role: 'attendee' }
+                    {
+                        id: signInData.user.id,
+                        name: userName,
+                        role: 'attendee',
+                        phone: contactData.phone || null,
+                        email: contactData.email || null,
+                        company: contactData.company || null,
+                        title: contactData.title || null
+                    }
                 ], { onConflict: 'id', ignoreDuplicates: true });
 
                 if (profileCheckError) {

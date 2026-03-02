@@ -20,6 +20,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
   const qrRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const { refreshProfile } = useAuth();
   const { showToast } = useToast();
 
@@ -149,21 +150,66 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
 
       <div className="bg-white rounded-lg shadow-md p-6">
         <h3 className="text-xl font-bold text-brand-primary mb-4">Mis Contactos ({contacts.length})</h3>
-        <div className="space-y-4 max-h-60 overflow-y-auto">
+        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
           {contacts.length > 0 ? (
             contacts.map((contact) => (
-              <div key={contact.id} className="flex items-center space-x-4">
-                {contact.photoUrl ? (
-                  <img src={contact.photoUrl} alt={contact.name} className="w-12 h-12 rounded-full object-cover" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold shrink-0">
-                    {contact.name.substring(0, 2).toUpperCase()}
+              <div
+                key={contact.id}
+                className="border rounded-lg overflow-hidden border-gray-100 hover:border-blue-100 transition-colors bg-gray-50/50"
+              >
+                <div
+                  className="flex items-center space-x-4 p-3 cursor-pointer select-none"
+                  onClick={() => setExpandedContactId(expandedContactId === contact.id ? null : contact.id)}
+                >
+                  {contact.photoUrl ? (
+                    <img src={contact.photoUrl} alt={contact.name} className="w-12 h-12 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold shrink-0">
+                      {contact.name.substring(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-brand-secondary truncate">{contact.name}</p>
+                    <p className="text-sm text-gray-500 truncate">{contact.title || contact.company || 'CISMM X CONNECT'}</p>
+                  </div>
+                  <div className="shrink-0 text-gray-400">
+                    <svg className={`w-5 h-5 transition-transform duration-200 ${expandedContactId === contact.id ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Expanded Details Section */}
+                {expandedContactId === contact.id && (
+                  <div className="px-4 pb-4 pt-2 border-t border-gray-100 bg-white">
+                    <div className="space-y-3 text-sm mt-2">
+                      {contact.company && (
+                        <div className="flex items-start text-gray-600">
+                          <svg className="w-5 h-5 mr-2 text-brand-accent/70 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                          <span className="truncate">{contact.company}</span>
+                        </div>
+                      )}
+
+                      {contact.email && (
+                        <a href={`mailto:${contact.email}`} className="flex items-center text-blue-600 hover:underline">
+                          <svg className="w-5 h-5 mr-2 text-brand-accent/70 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                          <span className="truncate">{contact.email}</span>
+                        </a>
+                      )}
+
+                      {contact.phone && (
+                        <a href={`tel:${contact.phone.replace(/\D/g, '')}`} className="flex items-center text-blue-600 hover:underline">
+                          <svg className="w-5 h-5 mr-2 text-brand-accent/70 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+                          {contact.phone}
+                        </a>
+                      )}
+
+                      {!contact.email && !contact.phone && !contact.company && (
+                        <p className="text-gray-400 italic text-center py-2">Sin detalles de contacto adicionales</p>
+                      )}
+                    </div>
                   </div>
                 )}
-                <div>
-                  <p className="font-semibold text-brand-secondary">{contact.name}</p>
-                  <p className="text-sm text-gray-500">{contact.title}</p>
-                </div>
               </div>
             ))
           ) : (
