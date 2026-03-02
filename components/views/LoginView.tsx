@@ -4,12 +4,14 @@ import { useToast } from '../../contexts/ToastContext';
 import { CheckCircleIcon } from '../Icons';
 import { Html5Qrcode } from 'html5-qrcode';
 import { parseVCard } from '../../utils/vcardParser';
+import { useAuth } from '../../contexts/AuthContext';
 
 export const LoginView: React.FC = () => {
     const [isScannerMode, setIsScannerMode] = useState(true);
     const [loginInput, setLoginInput] = useState(''); // Accepts username or email
     const [password, setPassword] = useState('');
     const { showToast } = useToast();
+    const { refreshProfile } = useAuth();
     const [loading, setLoading] = useState(false);
 
     // Scanner state
@@ -64,9 +66,6 @@ export const LoginView: React.FC = () => {
 
     const handleQrLogin = async (decodedText: string) => {
         try {
-            // DEBUG: Show exactly what the scanner read so we can fix the parser
-            alert("QR Leído:\n\n" + decodedText.substring(0, 300));
-
             setLoading(true);
             let contactData: any;
 
@@ -117,7 +116,7 @@ export const LoginView: React.FC = () => {
             const autoPassword = `cismm-${userId}-secret`;
 
             // Attempt login
-            let { error } = await supabase.auth.signInWithPassword({
+            let { data: signInData, error } = await supabase.auth.signInWithPassword({
                 email: autoEmail,
                 password: autoPassword
             });
@@ -151,12 +150,35 @@ export const LoginView: React.FC = () => {
                 }
             } else if (error) {
                 throw error;
+            } else if (signInData?.user) {
+                // Login was successful! 
+                // But if the 'profiles' db table got wiped, their Auth user exists but profile is missing.
+                // Fail-safe: Ensure their row exists in 'profiles'
+                const { error: profileCheckError } = await supabase.from('profiles').upsert([
+                    { id: signInData.user.id, name: userName, role: 'attendee' }
+                ], { onConflict: 'id', ignoreDuplicates: true });
+
+                if (profileCheckError) {
+                    console.error("Silent profile recovery failed:", profileCheckError);
+                }
             }
+
+            // Force AuthContext to reload profile so App.tsx redirects off LoginView immediately
+            try {
+                await refreshProfile();
+            } catch (err) { }
 
             showToast(`¡Bienvenido, ${userName}!`, 'success');
         } catch (e: any) {
-            showToast("Error al ingresar: " + e.message, "error");
-            if (scannerRef.current?.isScanning) scannerRef.current?.resume();
+            console.error("QR Login Error:", e);
+            showToast("Error de acceso: " + (e.message || "Credenciales inválidas"), "error");
+            try {
+                if (scannerRef.current) {
+                    await scannerRef.current.resume();
+                }
+            } catch (err) {
+                // ignore resume errors
+            }
         } finally {
             setLoading(false);
         }
