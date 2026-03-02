@@ -56,10 +56,8 @@ const MainApp = () => {
   const { showToast } = useToast();
   const { session, profile, isLoading, signOut, refreshProfile } = useAuth();
 
-  if (isLoading) return <LoadingSpinner />;
-  if (!session || !profile) return <LoginView />;
-
   const CURRENT_USER = profile;
+
   // Device ID Management
   const [deviceId] = useState(() => {
     let id = localStorage.getItem('device_id');
@@ -72,7 +70,7 @@ const MainApp = () => {
 
   const [activeView, setActiveView] = useState<View>('DASHBOARD');
   const [contacts, setContacts] = useLocalStorage<UserProfile[]>('contacts', []);
-  const points = profile.points || 0;
+  const points = profile?.points || 0;
 
   const {
     agendaSessions,
@@ -97,7 +95,7 @@ const MainApp = () => {
     loading,
     setUnreadNewsCount,
     refreshData
-  } = useAppData(profile.id);
+  } = useAppData(profile?.id);
 
   // Clear unread count when visiting News
   useEffect(() => {
@@ -105,8 +103,6 @@ const MainApp = () => {
       setUnreadNewsCount(0);
     }
   }, [activeView, setUnreadNewsCount]);
-
-  const userRole = CURRENT_USER.role as UserRole;
 
   useEffect(() => {
     // PWA: Service Worker Registration
@@ -127,6 +123,11 @@ const MainApp = () => {
         .catch(error => console.error('ServiceWorker registration failed: ', error));
     }
   }, []);
+
+  if (isLoading) return <LoadingSpinner />;
+  if (!session || !profile || !CURRENT_USER) return <LoginView />;
+
+  const userRole = CURRENT_USER.role as UserRole;
 
   const handleAddPoints = async (amount: number, reason: string) => {
     // Only attendees participate in gamification
