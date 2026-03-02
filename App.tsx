@@ -9,6 +9,7 @@ import { supabase } from './utils/supabase';
 import { Header } from './components/common/Header';
 import { BottomNav } from './components/common/BottomNav';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const DashboardView = lazy(() => import('./components/views/DashboardView').then(module => ({ default: module.DashboardView })));
 const AgendaView = lazy(() => import('./components/views/AgendaView').then(module => ({ default: module.AgendaView })));
@@ -341,9 +342,11 @@ const MainApp = () => {
       <Header title={viewTitles[activeView]} onLogout={handleLogout} />
       <ToastContainer />
       <main className="pb-32">
-        <Suspense fallback={<LoadingSpinner />}>
-          {renderView()}
-        </Suspense>
+        <ErrorBoundary key={activeView} onReset={() => setActiveView('DASHBOARD')}>
+          <Suspense fallback={<LoadingSpinner />}>
+            {renderView()}
+          </Suspense>
+        </ErrorBoundary>
       </main>
       <BottomNav activeView={activeView} setActiveView={setActiveView} unreadNewsCount={unreadNewsCount} />
     </div>
