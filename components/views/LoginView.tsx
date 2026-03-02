@@ -71,8 +71,11 @@ export const LoginView: React.FC = () => {
                 contactData = JSON.parse(atob(decodedText));
             }
 
-            const userId = contactData.id || contactData.exhibitorId;
-            const userName = contactData.name || "Asistente " + userId;
+            // Extract data handling both the old Secure Token format (with payload) and new simplified format
+            const payloadData = contactData.payload ? contactData.payload : contactData;
+
+            const userId = payloadData.id || payloadData.exhibitorId;
+            const userName = payloadData.name || "Asistente " + userId;
 
             if (!userId) {
                 showToast("Código QR no válido para la aplicación.", "error");
@@ -101,11 +104,20 @@ export const LoginView: React.FC = () => {
                 if (signUpError) throw signUpError;
 
                 if (signUpData.user) {
-                    await supabase.from('profiles').insert([
+                    const { error: insertError } = await supabase.from('profiles').insert([
                         { id: signUpData.user.id, name: userName, role: 'attendee' }
                     ]);
+                    if (insertError) {
+                        console.error("Profile insert error:", insertError);
+                        throw new Error("No se pudo crear el perfil: " + insertError.message);
+                    }
+
                     // Force a re-login after creating to establish the session definitely
-                    await supabase.auth.signInWithPassword({ email: autoEmail, password: autoPassword });
+                    const { error: signInError } = await supabase.auth.signInWithPassword({ email: autoEmail, password: autoPassword });
+                    if (signInError) {
+                        console.error("Auto-signin error after signup:", signInError);
+                        throw new Error("Error al iniciar sesión automáticamente: " + signInError.message);
+                    }
                 }
             } else if (error) {
                 throw error;
