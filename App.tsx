@@ -52,62 +52,15 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((pr
   return [storedValue, setValue];
 };
 
-interface ViewRendererProps {
-  activeView: View;
-  myAgenda: number[];
-  agendaSessions: AgendaSession[];
-  setActiveView: (view: View) => void;
-  points: number;
-  speakers: Speaker[];
-  userRole: UserRole;
-  exhibitors: Exhibitor[];
-  CURRENT_USER: UserProfile;
-  toggleAgendaItem: (id: number) => void;
-  checkedInSessions: number[];
-  myRatings: number[];
-  handleSessionCheckIn: (id: number) => void;
-  setMyRatings: React.Dispatch<React.SetStateAction<number[]>>;
-  handleScanSuccess: (data: any) => void;
-  contacts: UserProfile[];
-  leaderboard: LeaderboardEntry[];
-  setSpeakers: React.Dispatch<React.SetStateAction<Speaker[]>>;
-  setExhibitors: React.Dispatch<React.SetStateAction<Exhibitor[]>>;
-  setAgendaSessions: React.Dispatch<React.SetStateAction<AgendaSession[]>>;
-  setContacts: (value: UserProfile[] | ((prevState: UserProfile[]) => UserProfile[])) => void;
-  exhibitorCategories: string[];
-  setExhibitorCategories: React.Dispatch<React.SetStateAction<string[]>>;
-  newsPosts: NewsPost[];
-  handleCreatePost: (data: any) => void;
-  handleDeletePost: (id: number) => void;
-}
-
-const ViewRenderer: React.FC<ViewRendererProps> = ({
-  activeView, myAgenda, agendaSessions, setActiveView, points, speakers, userRole, exhibitors, CURRENT_USER,
-  toggleAgendaItem, checkedInSessions, myRatings, handleSessionCheckIn, setMyRatings, handleScanSuccess,
-  contacts, leaderboard, setSpeakers, setExhibitors, setAgendaSessions, setContacts, exhibitorCategories,
-  setExhibitorCategories, newsPosts, handleCreatePost, handleDeletePost
-}) => {
-  switch (activeView) {
-    case 'DASHBOARD': return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={CURRENT_USER} />;
-    case 'AGENDA': return <AgendaView sessions={agendaSessions} myAgenda={myAgenda} toggleAgendaItem={toggleAgendaItem} speakers={speakers} user={CURRENT_USER} checkedInSessions={checkedInSessions} myRatings={myRatings} onCheckIn={handleSessionCheckIn} onRatingSubmitted={(sessionId) => setMyRatings(prev => [...prev, sessionId])} />;
-    case 'SPEAKERS': return <SpeakersView speakers={speakers} agendaSessions={agendaSessions} />;
-    case 'EXHIBITORS': return <ExhibitorsView exhibitors={exhibitors} />;
-    case 'SCANNER': return <ScannerView onScanSuccess={handleScanSuccess} />;
-    case 'PROFILE': return <ProfileView user={CURRENT_USER} contacts={contacts} setActiveView={setActiveView} />;
-    case 'GAMIFICATION': return <GamificationView leaderboard={leaderboard} userPoints={points} />;
-    case 'INFO': return <InfoView />;
-    case 'ADMIN': return userRole === 'admin' ? <AdminView speakers={speakers} exhibitors={exhibitors} agendaSessions={agendaSessions} setSpeakers={setSpeakers} setExhibitors={setExhibitors} setAgendaSessions={setAgendaSessions} contacts={contacts} setContacts={setContacts} exhibitorCategories={exhibitorCategories} setExhibitorCategories={setExhibitorCategories} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Se requieren permisos de administrador.</div>;
-    case 'MY_STAND': return userRole === 'exhibitor' ? <ExhibitorDashboard user={{ ...CURRENT_USER, role: userRole }} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Solo para expositores.</div>;
-    case 'NEWS': return <NewsBoard posts={newsPosts} userRole={userRole} currentUserName={CURRENT_USER.name} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
-    default: return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={CURRENT_USER} />;
-  }
-};
-
 const MainApp = () => {
+  // ============================================================
+  // ALL HOOKS MUST BE HERE — BEFORE ANY CONDITIONAL RETURNS
+  // React requires the SAME hooks to run in the SAME order on
+  // every single render. No hook may appear after an early return.
+  // ============================================================
+
   const { showToast } = useToast();
   const { session, profile, isLoading, signOut, refreshProfile } = useAuth();
-
-  const CURRENT_USER = profile;
 
   // Device ID Management
   const [deviceId] = useState(() => {
@@ -121,7 +74,6 @@ const MainApp = () => {
 
   const [activeView, setActiveView] = useState<View>('DASHBOARD');
   const [contacts, setContacts] = useLocalStorage<UserProfile[]>('contacts', []);
-  const points = profile?.points || 0;
 
   const {
     agendaSessions,
@@ -175,22 +127,19 @@ const MainApp = () => {
     }
   }, []);
 
-  if (isLoading) return <LoadingSpinner />;
-  if (!session || !profile || !CURRENT_USER) return <LoginView />;
-
-  const userRole = CURRENT_USER.role as UserRole;
-
-  const handleAddPoints = async (amount: number, reason: string) => {
-    // Only attendees participate in gamification
-    if (userRole !== 'attendee') return;
-    const newPoints = points + amount;
+  const handleAddPoints = useCallback(async (amount: number, reason: string) => {
+    if (!profile) return;
+    const currentRole = profile.role as UserRole;
+    if (currentRole !== 'attendee') return;
+    const newPoints = (profile.points || 0) + amount;
     await supabase.from('profiles').update({ points: newPoints }).eq('id', profile.id);
     await refreshProfile();
     await refreshData();
     showToast(`${reason} (+${amount} pts)`, 'success');
-  };
+  }, [profile, refreshProfile, refreshData, showToast]);
 
   const toggleAgendaItem = useCallback(async (sessionId: number) => {
+    if (!profile) return;
     const isAdding = !myAgenda.includes(sessionId);
     // Optimistic UI update
     setMyAgenda(prev => isAdding ? [...prev, sessionId] : prev.filter(id => id !== sessionId));
@@ -220,9 +169,10 @@ const MainApp = () => {
       console.error(err);
       showToast('Error de red al actualizar agenda.', 'error');
     }
-  }, [myAgenda, profile.id, points, showToast]);
+  }, [myAgenda, profile, showToast, handleAddPoints, setMyAgenda]);
 
   const handleScanSuccess = useCallback(async (data: any) => {
+    if (!profile) return;
     if (data.exhibitorId) {
       if (!visitedExhibitors.includes(data.exhibitorId)) {
         const { error } = await supabase.from('user_visited_exhibitors').insert({ user_id: profile.id, exhibitor_id: data.exhibitorId });
@@ -282,16 +232,17 @@ const MainApp = () => {
     } else {
       showToast('Código QR no reconocido.', 'error');
     }
-  }, [contacts, visitedExhibitors, deviceId, profile.id, points]);
+  }, [contacts, visitedExhibitors, deviceId, profile, handleAddPoints, showToast, setContacts, setVisitedExhibitors, setActiveView]);
 
   const handleSessionCheckIn = useCallback(async (sessionId: number) => {
-    const session = agendaSessions.find(s => s.id === sessionId);
-    if (!session) {
+    if (!profile) return;
+    const sess = agendaSessions.find(s => s.id === sessionId);
+    if (!sess) {
       showToast('Sesión no encontrada.', 'error');
       return;
     }
 
-    if (!isSessionActive(session.day, session.startTime, session.endTime)) {
+    if (!isSessionActive(sess.day, sess.startTime, sess.endTime)) {
       showToast('Esta conferencia no está activa en este momento.', 'error');
       return;
     }
@@ -312,9 +263,11 @@ const MainApp = () => {
     } else {
       showToast('Ya has hecho check-in a esta sesión.', 'info');
     }
-  }, [checkedInSessions, profile.id, points, agendaSessions, showToast]);
+  }, [checkedInSessions, profile, agendaSessions, showToast, handleAddPoints, setCheckedInSessions]);
 
   const handleCreatePost = useCallback(async (data: { title: string; content: string; category: string }) => {
+    if (!profile) return;
+    const userRole = profile.role as UserRole;
     const newPost = {
       title: data.title,
       content: data.content,
@@ -329,7 +282,7 @@ const MainApp = () => {
     } else {
       showToast('Error al publicar anucio', 'error');
     }
-  }, [profile.name, userRole]);
+  }, [profile, showToast]);
 
   const handleDeletePost = useCallback(async (id: number) => {
     if (!window.confirm('¿Estás seguro de que quieres eliminar este anuncio?')) return;
@@ -339,22 +292,48 @@ const MainApp = () => {
     } else {
       showToast('Error al eliminar', 'error');
     }
-  }, []);
+  }, [showToast]);
 
-  if (loading) return <LoadingSpinner />;
-
-
-
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
+    if (!profile) return;
+    const userRole = profile.role as UserRole;
     if (userRole === 'attendee') {
       const confirmLogout = window.confirm('ATENCIÓN: Si cierras sesión, tu gafete virtual se desvinculará de este dispositivo. Para volver a entrar, necesitarás contactar a un Administrador para que resetee tu acceso.\n\n¿Estás seguro de que deseas salir?');
       if (!confirmLogout) return;
     }
     signOut();
-  };
+  }, [profile, signOut]);
+
+  // ============================================================
+  // CONDITIONAL RETURNS — safe because ALL hooks are above
+  // ============================================================
+
+  if (isLoading || loading) return <LoadingSpinner />;
+  if (!session || !profile) return <LoginView />;
+
+  // Non-hook derived values (safe after the guard)
+  const userRole = profile.role as UserRole;
+  const points = profile.points || 0;
 
   const viewTitles: Record<View, string> = {
     DASHBOARD: 'Inicio', AGENDA: 'Agenda', SPEAKERS: 'Ponentes', EXHIBITORS: 'Expositores', SCANNER: 'Escanear QR', PROFILE: 'Mi Perfil', GAMIFICATION: 'Gamificación', INFO: 'Información', ADMIN: 'Panel de Administración', MY_STAND: 'Mi Stand', NEWS: 'Noticias',
+  };
+
+  const renderView = () => {
+    switch (activeView) {
+      case 'DASHBOARD': return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={profile} />;
+      case 'AGENDA': return <AgendaView sessions={agendaSessions} myAgenda={myAgenda} toggleAgendaItem={toggleAgendaItem} speakers={speakers} user={profile} checkedInSessions={checkedInSessions} myRatings={myRatings} onCheckIn={handleSessionCheckIn} onRatingSubmitted={(sessionId) => setMyRatings(prev => [...prev, sessionId])} />;
+      case 'SPEAKERS': return <SpeakersView speakers={speakers} agendaSessions={agendaSessions} />;
+      case 'EXHIBITORS': return <ExhibitorsView exhibitors={exhibitors} />;
+      case 'SCANNER': return <ScannerView onScanSuccess={handleScanSuccess} />;
+      case 'PROFILE': return <ProfileView user={profile} contacts={contacts} setActiveView={setActiveView} />;
+      case 'GAMIFICATION': return <GamificationView leaderboard={leaderboard} userPoints={points} />;
+      case 'INFO': return <InfoView />;
+      case 'ADMIN': return userRole === 'admin' ? <AdminView speakers={speakers} exhibitors={exhibitors} agendaSessions={agendaSessions} setSpeakers={setSpeakers} setExhibitors={setExhibitors} setAgendaSessions={setAgendaSessions} contacts={contacts} setContacts={setContacts} exhibitorCategories={exhibitorCategories} setExhibitorCategories={setExhibitorCategories} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Se requieren permisos de administrador.</div>;
+      case 'MY_STAND': return userRole === 'exhibitor' ? <ExhibitorDashboard user={{ ...profile, role: userRole }} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Solo para expositores.</div>;
+      case 'NEWS': return <NewsBoard posts={newsPosts} userRole={userRole} currentUserName={profile.name} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
+      default: return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={profile} />;
+    }
   };
 
   return (
@@ -363,16 +342,7 @@ const MainApp = () => {
       <ToastContainer />
       <main className="pb-32">
         <Suspense fallback={<LoadingSpinner />}>
-          <ViewRenderer
-            activeView={activeView} myAgenda={myAgenda} agendaSessions={agendaSessions} setActiveView={setActiveView}
-            points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} CURRENT_USER={CURRENT_USER}
-            toggleAgendaItem={toggleAgendaItem} checkedInSessions={checkedInSessions} myRatings={myRatings}
-            handleSessionCheckIn={handleSessionCheckIn} setMyRatings={setMyRatings} handleScanSuccess={handleScanSuccess}
-            contacts={contacts} leaderboard={leaderboard} setSpeakers={setSpeakers} setExhibitors={setExhibitors}
-            setAgendaSessions={setAgendaSessions} setContacts={setContacts} exhibitorCategories={exhibitorCategories}
-            setExhibitorCategories={setExhibitorCategories} newsPosts={newsPosts} handleCreatePost={handleCreatePost}
-            handleDeletePost={handleDeletePost}
-          />
+          {renderView()}
         </Suspense>
       </main>
       <BottomNav activeView={activeView} setActiveView={setActiveView} unreadNewsCount={unreadNewsCount} />
