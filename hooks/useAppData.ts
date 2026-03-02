@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
-import { Speaker, Exhibitor, AgendaSession, LeaderboardEntry, NewsPost } from '../types';
+import { Speaker, Exhibitor, AgendaSession, LeaderboardEntry, NewsPost, UserProfile } from '../types';
 
 export const useAppData = (userId: string | undefined) => {
     const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -17,6 +17,7 @@ export const useAppData = (userId: string | undefined) => {
     const [visitedExhibitors, setVisitedExhibitors] = useState<number[]>([]);
     const [checkedInSessions, setCheckedInSessions] = useState<number[]>([]);
     const [myRatings, setMyRatings] = useState<number[]>([]);
+    const [contacts, setContacts] = useState<UserProfile[]>([]);
 
     const fetchPublicData = async () => {
         try {
@@ -66,6 +67,34 @@ export const useAppData = (userId: string | undefined) => {
             if (userVisits) setVisitedExhibitors(userVisits.map(u => u.exhibitor_id));
             if (userCheckins) setCheckedInSessions(userCheckins.map(u => u.session_id));
             if (userRatings) setMyRatings(userRatings.map(u => u.session_id));
+
+            // Fetch contacts from database (joined with profiles for full data)
+            const { data: contactLogs } = await supabase
+                .from('user_contacts_log')
+                .select('contact_id, profiles!user_contacts_log_contact_id_fkey(id, name, title, company, photo_url, email, phone, role)')
+                .eq('user_id', uid);
+
+            if (contactLogs) {
+                const fetchedContacts: UserProfile[] = contactLogs
+                    .filter((c: any) => c.profiles)
+                    .map((c: any) => {
+                        const p = c.profiles;
+                        return {
+                            id: p.id,
+                            name: p.name || '',
+                            title: p.title || '',
+                            company: p.company || '',
+                            photoUrl: p.photo_url || '',
+                            email: p.email || '',
+                            phone: p.phone || '',
+                            role: p.role || 'attendee',
+                            points: 0,
+                            interests: [],
+                            track: 'General' as const,
+                        };
+                    });
+                setContacts(fetchedContacts);
+            }
         } catch (err) {
             console.error("Error fetching user data:", err);
         }
@@ -184,10 +213,10 @@ export const useAppData = (userId: string | undefined) => {
 
     return {
         speakers, exhibitors, agendaSessions, leaderboard, exhibitorCategories, newsPosts,
-        myAgenda, visitedExhibitors, checkedInSessions, myRatings, loading, unreadNewsCount,
+        myAgenda, visitedExhibitors, checkedInSessions, myRatings, contacts, loading, unreadNewsCount,
         setSpeakers, setExhibitors, setAgendaSessions, setExhibitorCategories, setNewsPosts,
         setMyAgenda, setVisitedExhibitors, setCheckedInSessions, setLeaderboard,
-        setUnreadNewsCount, setMyRatings,
+        setUnreadNewsCount, setMyRatings, setContacts,
         refreshData
     };
 };

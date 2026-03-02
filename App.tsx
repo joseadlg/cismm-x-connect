@@ -74,7 +74,6 @@ const MainApp = () => {
   });
 
   const [activeView, setActiveView] = useState<View>('DASHBOARD');
-  const [contacts, setContacts] = useLocalStorage<UserProfile[]>('contacts', []);
 
   const {
     agendaSessions,
@@ -98,6 +97,8 @@ const MainApp = () => {
     unreadNewsCount,
     loading,
     setUnreadNewsCount,
+    contacts,
+    setContacts,
     refreshData
   } = useAppData(profile?.id);
 
@@ -216,14 +217,12 @@ const MainApp = () => {
         if (error) {
           if (error.code === '23505') {
             showToast(`${contact.name} ya estaba en tus registros del servidor.`, 'info');
-            const boundContact = { ...contact, deviceId: contact.deviceId || deviceId };
-            setContacts(prev => [...prev, boundContact]); // Sync local state without points
+            await refreshData(); // Refresh contacts from DB
           } else {
             showToast('Error al guardar contacto en el servidor.', 'error');
           }
         } else {
-          const boundContact = { ...contact, deviceId: contact.deviceId || deviceId };
-          setContacts(prev => [...prev, boundContact]);
+          await refreshData(); // Refresh contacts from DB to get full profile data + photos
           await handleAddPoints(100, `¡Contacto añadido: ${contact.name}!`);
         }
       } else {
@@ -233,7 +232,7 @@ const MainApp = () => {
     } else {
       showToast('Código QR no reconocido.', 'error');
     }
-  }, [contacts, visitedExhibitors, deviceId, profile, handleAddPoints, showToast, setContacts, setVisitedExhibitors, setActiveView]);
+  }, [contacts, visitedExhibitors, deviceId, profile, handleAddPoints, showToast, refreshData, setVisitedExhibitors, setActiveView]);
 
   const handleSessionCheckIn = useCallback(async (sessionId: number) => {
     if (!profile) return;
