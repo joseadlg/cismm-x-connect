@@ -38,7 +38,7 @@ export const useAppData = (userId: string | undefined) => {
                 id: e.id, name: e.name, logoUrl: e.logo_url || '', description: e.description || '', contact: e.contact || '', website: e.website || '', standNumber: e.stand_number || '', category: (e.exhibitor_categories as any)?.name || ''
             })));
             if (aData) setAgendaSessions(aData.map(a => ({
-                id: a.id, title: a.title, startTime: a.start_time, endTime: a.end_time, room: a.room || '', description: a.description || '', day: a.day as any, track: a.track as any, speakerIds: (a.session_speakers as any[]).map(ss => ss.speaker_id)
+                id: a.id, title: a.title, startTime: a.start_time, endTime: a.end_time, room: a.room || '', description: a.description || '', day: a.day as any, track: a.track as any, speakerIds: Array.isArray(a.session_speakers) ? a.session_speakers.map((ss: any) => ss.speaker_id) : []
             })));
             if (cData) setExhibitorCategories(cData.map(c => c.name));
             if (nData) setNewsPosts(nData.map(n => ({
@@ -135,7 +135,7 @@ export const useAppData = (userId: string | undefined) => {
                                 description: sessionData.description || '',
                                 day: sessionData.day as any,
                                 track: sessionData.track as any,
-                                speakerIds: (sessionData.session_speakers as any[]).map(ss => ss.speaker_id)
+                                speakerIds: Array.isArray(sessionData.session_speakers) ? sessionData.session_speakers.map((ss: any) => ss.speaker_id) : []
                             };
 
                             setAgendaSessions(prev => {

@@ -58,16 +58,9 @@ export const ScannerView: React.FC<ScannerViewProps> = ({ onScanSuccess }) => {
     qr.start(
       { facingMode: "environment" },
       {
-        fps: 15,
-        // Use a FUNCTION so the library computes the box off the real viewfinder size
-        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const smaller = Math.min(viewfinderWidth, viewfinderHeight);
-          const size = Math.floor(smaller * 0.9);
-          return { width: size, height: size };
-        },
-        aspectRatio: 1.333, // 4:3 — best for QR scanning on mobile
-        rememberLastUsedCamera: true,
-      },
+        fps: 10,
+        qrbox: 250
+      } as any,
       (decodedText: string) => {
         setScanResult(decodedText);
         processQR(decodedText);
