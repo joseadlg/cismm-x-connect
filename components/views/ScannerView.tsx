@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { parseVCard } from '../../utils/vcardParser';
 
 interface ScannerViewProps {
   onScanSuccess: (data: any) => void;
@@ -13,14 +14,27 @@ export const ScannerView: React.FC<ScannerViewProps> = ({ onScanSuccess }) => {
 
   const processQR = (decodedText: string) => {
     try {
-      let contactData;
-      try {
-        contactData = JSON.parse(decodedText);
-      } catch {
+      let contactData: any;
+
+      const vcard = parseVCard(decodedText);
+      if (vcard) {
+        contactData = {
+          id: vcard.id || vcard.email || vcard.name,
+          name: vcard.name || "Asistente " + (vcard.email || "Desconocido"),
+          company: vcard.company || "",
+          title: vcard.title || "",
+          email: vcard.email || "",
+          phone: vcard.phone || ""
+        };
+      } else {
         try {
-          contactData = JSON.parse(atob(decodedText));
+          contactData = JSON.parse(decodedText);
         } catch {
-          throw new Error("Invalid format");
+          try {
+            contactData = JSON.parse(atob(decodedText));
+          } catch {
+            throw new Error("Invalid format");
+          }
         }
       }
       if (contactData.payload && contactData.signature) {

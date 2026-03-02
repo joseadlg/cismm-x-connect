@@ -3,6 +3,7 @@ import { supabase } from '../../utils/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { CheckCircleIcon } from '../Icons';
 import { Html5Qrcode } from 'html5-qrcode';
+import { parseVCard } from '../../utils/vcardParser';
 
 export const LoginView: React.FC = () => {
     const [isScannerMode, setIsScannerMode] = useState(true);
@@ -64,26 +65,52 @@ export const LoginView: React.FC = () => {
     const handleQrLogin = async (decodedText: string) => {
         try {
             setLoading(true);
-            let contactData;
-            try {
-                contactData = JSON.parse(decodedText);
-            } catch (e) {
-                contactData = JSON.parse(atob(decodedText));
+            let contactData: any;
+
+            // 1. Try vCard format first
+            const vcard = parseVCard(decodedText);
+            if (vcard) {
+                // For vCards, prioritize email as the unique ID if no explicit UID exists
+                contactData = {
+                    id: vcard.id || vcard.email || vcard.name,
+                    name: vcard.name || "Asistente " + (vcard.email || "Desconocido")
+                };
+            } else {
+                // 2. Try JSON or Base64
+                try {
+                    contactData = JSON.parse(decodedText);
+                } catch (e) {
+                    try {
+                        contactData = JSON.parse(atob(decodedText));
+                    } catch (e2) {
+                        showToast("Código QR no legible.", "error");
+                        scannerRef.current?.resume();
+                        setLoading(false);
+                        return;
+                    }
+                }
             }
 
             // Extract data handling both the old Secure Token format (with payload) and new simplified format
             const payloadData = contactData.payload ? contactData.payload : contactData;
 
-            const userId = payloadData.id || payloadData.exhibitorId;
+            // Ensure userId is a string without spaces to prevent auth errors
+            const rawUserId = payloadData.id || payloadData.exhibitorId || payloadData.email;
+            const userId = String(rawUserId).replace(/\s+/g, '').trim();
             const userName = payloadData.name || "Asistente " + userId;
 
             if (!userId) {
-                showToast("Código QR no válido para la aplicación.", "error");
+                showToast("Código QR vacío o sin identificador.", "error");
                 scannerRef.current?.resume();
+                setLoading(false);
                 return;
             }
 
-            const autoEmail = `${userId}@asistente.cismm.com`;
+            // If the ID is an email (from a vCard), use it directly. Otherwise use the virtual domain wrapper.
+            const autoEmail = userId.includes('@')
+                ? userId.toLowerCase()
+                : `${userId.toLowerCase()}@asistente.cismm.com`;
+
             const autoPassword = `cismm-${userId}-secret`;
 
             // Attempt login
