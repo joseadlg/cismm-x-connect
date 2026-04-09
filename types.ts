@@ -1,4 +1,6 @@
 
+import { AttendeeCategory } from './utils/attendeeCategory';
+
 export interface Speaker {
   id: number;
   name: string;
@@ -43,7 +45,7 @@ export interface DemoSession {
   description: string;
 }
 
-export type UserRole = 'admin' | 'exhibitor' | 'attendee';
+export type UserRole = 'admin' | 'exhibitor' | 'attendee' | 'speaker';
 
 export interface UserProfile {
   id: string;
@@ -55,11 +57,15 @@ export interface UserProfile {
   isAdmin?: boolean; // Deprecated in favor of role
   role: UserRole;
   exhibitorId?: number; // For exhibitors
+  speakerId?: number; // For speakers
   track: 'Medicina Estética' | 'Spa' | 'PMU' | 'General';
+  attendeeCategory?: AttendeeCategory;
   deviceId?: string; // For device binding security
   points?: number;
   maxDevices?: number;
   registeredDevices?: string[];
+  email?: string;
+  phone?: string;
 }
 
 export interface LeaderboardEntry {

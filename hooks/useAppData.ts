@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
 import { Speaker, Exhibitor, AgendaSession, LeaderboardEntry, NewsPost, UserProfile } from '../types';
+import { normalizeAttendeeCategory } from '../utils/attendeeCategory';
 
 export const useAppData = (userId: string | undefined) => {
     const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -71,7 +72,7 @@ export const useAppData = (userId: string | undefined) => {
             // Fetch contacts from database (joined with profiles for full data)
             const { data: contactLogs } = await supabase
                 .from('user_contacts_log')
-                .select('contact_id, profiles!user_contacts_log_contact_id_fkey(id, name, title, company, photo_url, email, phone, role)')
+                .select('contact_id, profiles!user_contacts_log_contact_id_fkey(id, name, title, company, photo_url, email, phone, role, attendee_category)')
                 .eq('user_id', uid);
 
             if (contactLogs) {
@@ -88,6 +89,7 @@ export const useAppData = (userId: string | undefined) => {
                             email: p.email || '',
                             phone: p.phone || '',
                             role: p.role || 'attendee',
+                            attendeeCategory: normalizeAttendeeCategory(p.attendee_category),
                             points: 0,
                             interests: [],
                             track: 'General' as const,
@@ -101,12 +103,18 @@ export const useAppData = (userId: string | undefined) => {
     };
 
     const setupRealtimeSubscriptions = () => {
+        let isActive = true;
+
         // News Posts Subscription
         const newsChannel = supabase.channel('public:news_posts')
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'news_posts' },
                 (payload) => {
+                    if (!isActive) {
+                        return;
+                    }
+
                     if (payload.eventType === 'INSERT') {
                         const newPost = {
                             id: payload.new.id,
@@ -144,6 +152,10 @@ export const useAppData = (userId: string | undefined) => {
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'agenda_sessions' },
                 async (payload) => {
+                    if (!isActive) {
+                        return;
+                    }
+
                     if (payload.eventType === 'DELETE') {
                         setAgendaSessions(prev => prev.filter(session => session.id !== payload.old.id));
                     } else {
@@ -153,6 +165,10 @@ export const useAppData = (userId: string | undefined) => {
                             .select('*, session_speakers(speaker_id)')
                             .eq('id', payload.new.id)
                             .single();
+
+                        if (!isActive) {
+                            return;
+                        }
 
                         if (!error && sessionData) {
                             const newSession = {
@@ -178,8 +194,11 @@ export const useAppData = (userId: string | undefined) => {
             .subscribe();
 
         return () => {
-            supabase.removeChannel(newsChannel);
-            supabase.removeChannel(agendaChannel);
+            isActive = false;
+            void newsChannel.unsubscribe();
+            void agendaChannel.unsubscribe();
+            void supabase.removeChannel(newsChannel);
+            void supabase.removeChannel(agendaChannel);
         };
     };
 
@@ -198,7 +217,7 @@ export const useAppData = (userId: string | undefined) => {
                 setLoading(false);
             }
         };
-        init();
+        void init();
 
         return () => {
             mounted = false;

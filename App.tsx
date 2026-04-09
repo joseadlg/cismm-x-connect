@@ -44,10 +44,11 @@ const ExhibitorDashboard = lazyWithRetry(() => import('./components/views/Exhibi
 const NewsBoard = lazyWithRetry(() => import('./components/views/NewsBoard').then(module => ({ default: module.NewsBoard })));
 import { ToastContainer } from './components/ToastContainer';
 import { useToast } from './contexts/ToastContext';
-import { verifySecureToken } from './utils/security';
+import { getOrCreateDeviceId } from './utils/device';
+import { isSecureTokenLike, verifySecureToken } from './utils/security';
 import { isSessionActive } from './utils/timeValidation';
 
-// Custom hook for localStorage used for legacy non-db items like contacts and device_id
+// Custom hook for legacy client-only values stored in localStorage.
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((prevState: T) => T)) => void] => {
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
@@ -83,14 +84,7 @@ const MainApp = () => {
   const { session, profile, isLoading, signOut, refreshProfile } = useAuth();
 
   // Device ID Management
-  const [deviceId] = useState(() => {
-    let id = localStorage.getItem('device_id');
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem('device_id', id);
-    }
-    return id;
-  });
+  const [deviceId] = useState(() => getOrCreateDeviceId());
 
   const [activeView, setActiveView] = useState<View>('DASHBOARD');
 
@@ -129,23 +123,32 @@ const MainApp = () => {
   }, [activeView, setUnreadNewsCount]);
 
   useEffect(() => {
-    // PWA: Service Worker Registration
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(registration => {
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  console.log('New content available, please refresh.');
-                }
-              });
-            }
-          });
-        })
-        .catch(error => console.error('ServiceWorker registration failed: ', error));
+    if (!('serviceWorker' in navigator)) {
+      return;
     }
+
+    // In local development, stale service workers are more harmful than helpful.
+    if (import.meta.env.DEV) {
+      navigator.serviceWorker.getRegistrations()
+        .then(registrations => Promise.all(registrations.map(registration => registration.unregister())))
+        .catch(error => console.error('ServiceWorker cleanup failed: ', error));
+      return;
+    }
+
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('New content available, please refresh.');
+              }
+            });
+          }
+        });
+      })
+      .catch(error => console.error('ServiceWorker registration failed: ', error));
   }, []);
 
   const handleAddPoints = useCallback(async (amount: number, reason: string) => {
@@ -192,8 +195,21 @@ const MainApp = () => {
     }
   }, [myAgenda, profile, showToast, handleAddPoints, setMyAgenda]);
 
-  const handleScanSuccess = useCallback(async (data: any) => {
+  const handleScanSuccess = useCallback(async (rawData: any) => {
     if (!profile) return;
+
+    let data = rawData;
+
+    if (isSecureTokenLike(rawData)) {
+      const verifiedPayload = await verifySecureToken(rawData);
+      if (!verifiedPayload) {
+        showToast('⚠️ Error de Seguridad: Código QR inválido o manipulado.', 'error');
+        return;
+      }
+
+      data = verifiedPayload;
+    }
+
     if (data.exhibitorId) {
       if (!visitedExhibitors.includes(data.exhibitorId)) {
         const { error } = await supabase.from('user_visited_exhibitors').insert({ user_id: profile.id, exhibitor_id: data.exhibitorId });
@@ -211,19 +227,8 @@ const MainApp = () => {
       } else {
         showToast(`Ya has visitado a ${data.name || 'este Expositor'}.`, 'info');
       }
-    } else if ((data.id && data.name) || (data.payload && data.signature)) {
-      let scannedUser = data as UserProfile;
-      if (data.payload && data.signature) {
-        const verifiedPayload = await verifySecureToken(data);
-        if (verifiedPayload) {
-          scannedUser = verifiedPayload as UserProfile;
-        } else {
-          showToast('⚠️ Error de Seguridad: Código QR inválido o manipulado.', 'error');
-          return;
-        }
-      }
-
-      const contact = scannedUser;
+    } else if (data.id && data.name) {
+      const contact = data as UserProfile;
       if (contact.deviceId && contact.deviceId !== deviceId) {
         showToast(`⚠️ Alerta de Seguridad: Este perfil está vinculado a otro dispositivo.`, 'error');
         return;
@@ -284,34 +289,38 @@ const MainApp = () => {
     }
   }, [checkedInSessions, profile, agendaSessions, showToast, handleAddPoints, setCheckedInSessions]);
 
+  const invokeManageUsers = useCallback(async (action: string, payload: Record<string, unknown>) => {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('manage-users', {
+      headers: { Authorization: `Bearer ${currentSession?.access_token}` },
+      body: { action, payload }
+    });
+
+    if (error) throw new Error(data?.error || error.message);
+    if (data?.error) throw new Error(data.error);
+
+    return data;
+  }, []);
+
   const handleCreatePost = useCallback(async (data: { title: string; content: string; category: string }) => {
     if (!profile) return;
-    const userRole = profile.role as UserRole;
-    const newPost = {
-      title: data.title,
-      content: data.content,
-      author_name: profile.name,
-      author_role: userRole === 'admin' ? 'admin' : 'exhibitor',
-      category: data.category,
-    };
-
-    const { error } = await supabase.from('news_posts').insert(newPost);
-    if (!error) {
+    try {
+      await invokeManageUsers('CREATE_NEWS_POST', data);
       showToast('¡Anuncio publicado!', 'success');
-    } else {
-      showToast('Error al publicar anucio', 'error');
+    } catch (err: any) {
+      showToast(err.message || 'Error al publicar anuncio', 'error');
     }
-  }, [profile, showToast]);
+  }, [profile, showToast, invokeManageUsers]);
 
   const handleDeletePost = useCallback(async (id: number) => {
     if (!window.confirm('¿Estás seguro de que quieres eliminar este anuncio?')) return;
-    const { error } = await supabase.from('news_posts').delete().eq('id', id);
-    if (!error) {
+    try {
+      await invokeManageUsers('DELETE_NEWS_POST', { postId: id });
       showToast('Anuncio eliminado', 'info');
-    } else {
-      showToast('Error al eliminar', 'error');
+    } catch (err: any) {
+      showToast(err.message || 'Error al eliminar', 'error');
     }
-  }, [showToast]);
+  }, [showToast, invokeManageUsers]);
 
   const handleLogout = useCallback(() => {
     if (!profile) return;
@@ -328,7 +337,13 @@ const MainApp = () => {
   // ============================================================
 
   if (isLoading || loading) return <LoadingSpinner />;
-  if (!session || !profile) return <LoginView />;
+  if (!session || !profile) {
+    return (
+      <ErrorBoundary onReset={() => window.location.reload()}>
+        <LoginView />
+      </ErrorBoundary>
+    );
+  }
 
   // Non-hook derived values (safe after the guard)
   const userRole = profile.role as UserRole;

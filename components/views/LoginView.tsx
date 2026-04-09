@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../../utils/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { CheckCircleIcon } from '../Icons';
 import { Html5Qrcode } from 'html5-qrcode';
-import { parseVCard } from '../../utils/vcardParser';
 import { useAuth } from '../../contexts/AuthContext';
+import { parseQrData } from '../../utils/qr';
+import { resolveAttendeeCategory } from '../../utils/attendeeCategory';
 
 export const LoginView: React.FC = () => {
     const [isScannerMode, setIsScannerMode] = useState(true);
@@ -14,22 +15,50 @@ export const LoginView: React.FC = () => {
     const { refreshProfile } = useAuth();
     const [loading, setLoading] = useState(false);
 
+    const buildAttendeeProfilePatch = (userName: string, attendeeCategory: string, contactData: Record<string, any>) => ({
+        name: userName,
+        role: 'attendee',
+        attendee_category: attendeeCategory,
+        ...(contactData.phone ? { phone: contactData.phone } : {}),
+        ...(contactData.email ? { email: contactData.email } : {}),
+        ...(contactData.company ? { company: contactData.company } : {}),
+        ...(contactData.title ? { title: contactData.title } : {}),
+    });
+
     // Scanner state
     const scannerRef = useRef<Html5Qrcode | null>(null);
+
+    const cleanupScanner = useCallback(async () => {
+        const scanner = scannerRef.current;
+        scannerRef.current = null;
+
+        if (!scanner) {
+            return;
+        }
+
+        try {
+            await scanner.stop();
+        } catch {
+            // Ignore stop errors if the scanner never started or is already stopped.
+        }
+
+        try {
+            scanner.clear();
+        } catch {
+            // Ignore clear errors if the DOM node is already gone.
+        }
+    }, []);
 
     // Initialize/Destroy Scanner
     useEffect(() => {
         if (!isScannerMode) {
-            // Cleanup on mode switch
-            if (scannerRef.current && scannerRef.current.isScanning) {
-                scannerRef.current.stop().catch(console.error);
-                scannerRef.current.clear();
-            }
+            void cleanupScanner();
             return;
         }
 
         const qrCodeScanner = new Html5Qrcode("login-reader");
         scannerRef.current = qrCodeScanner;
+        let isDisposed = false;
 
         const startScanner = () => {
             qrCodeScanner.start(
@@ -46,6 +75,9 @@ export const LoginView: React.FC = () => {
                 },
                 (errorMessage: string) => { /* Ignore periodic clear texts */ }
             ).catch((err: any) => {
+                if (isDisposed) {
+                    return;
+                }
                 showToast("No se pudo iniciar la cámara. Otorga los permisos en tu navegador.", "error");
             });
         };
@@ -56,50 +88,40 @@ export const LoginView: React.FC = () => {
         }, 300);
 
         return () => {
+            isDisposed = true;
             clearTimeout(timer);
-            if (scannerRef.current && scannerRef.current.isScanning) {
-                scannerRef.current.stop().catch(console.error);
-                scannerRef.current.clear();
-            }
+            void cleanupScanner();
         };
-    }, [isScannerMode]);
+    }, [cleanupScanner, isScannerMode, showToast]);
 
     const handleQrLogin = async (decodedText: string) => {
         try {
             setLoading(true);
-            let contactData: any;
 
-            // 1. Try vCard format first
-            const vcard = parseVCard(decodedText);
-            if (vcard) {
-                // For vCards, prioritize email as the unique ID if no explicit UID exists
-                contactData = {
-                    id: vcard.id || vcard.email || vcard.name,
-                    name: vcard.name || "Asistente " + (vcard.email || "Desconocido")
-                };
-            } else {
-                // 2. Try JSON or Base64
-                try {
-                    contactData = JSON.parse(decodedText);
-                } catch (e) {
-                    try {
-                        contactData = JSON.parse(atob(decodedText));
-                    } catch (e2) {
-                        showToast("Código QR no legible.", "error");
-                        scannerRef.current?.resume();
-                        setLoading(false);
-                        return;
-                    }
-                }
+            const qrResult = await parseQrData(decodedText);
+
+            if (!qrResult.ok) {
+                showToast(
+                    qrResult.reason === 'invalid_security'
+                        ? 'Código QR inválido o manipulado.'
+                        : 'Código QR no legible.',
+                    'error'
+                );
+                scannerRef.current?.resume();
+                setLoading(false);
+                return;
             }
 
-            // Extract data handling both the old Secure Token format (with payload) and new simplified format
-            const payloadData = contactData.payload ? contactData.payload : contactData;
+            const contactData = qrResult.data;
+            const attendeeCategory = resolveAttendeeCategory(contactData);
 
             // Ensure userId is a string without spaces to prevent auth errors
-            const rawUserId = payloadData.id || payloadData.exhibitorId || payloadData.email;
+            const rawUserId = contactData.id || contactData.exhibitorId || contactData.email;
             const userId = String(rawUserId).replace(/\s+/g, '').trim();
-            const userName = payloadData.name || "Asistente " + userId;
+            const userName = (contactData.name as string | undefined) || "Asistente " + userId;
+            const loginEmailFromQr = typeof contactData.loginEmail === 'string'
+                ? contactData.loginEmail.trim().toLowerCase()
+                : '';
 
             if (!userId) {
                 showToast("Código QR vacío o sin identificador.", "error");
@@ -109,9 +131,9 @@ export const LoginView: React.FC = () => {
             }
 
             // If the ID is an email (from a vCard), use it directly. Otherwise use the virtual domain wrapper.
-            const autoEmail = userId.includes('@')
+            const autoEmail = loginEmailFromQr || (userId.includes('@')
                 ? userId.toLowerCase()
-                : `${userId.toLowerCase()}@asistente.cismm.com`;
+                : `${userId.toLowerCase()}@asistente.cismm.com`);
 
             const autoPassword = `cismm-${userId}-secret`;
 
@@ -122,7 +144,7 @@ export const LoginView: React.FC = () => {
             });
 
             // Auto-register via Virtual Credentials if not exists
-            if (error && error.message.includes("Invalid login credentials")) {
+            if (error && error.message.includes("Invalid login credentials") && !loginEmailFromQr) {
                 showToast('Creando perfil virtual...', 'info');
                 const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
                     email: autoEmail,
@@ -136,12 +158,7 @@ export const LoginView: React.FC = () => {
                     const { error: insertError } = await supabase.from('profiles').insert([
                         {
                             id: signUpData.user.id,
-                            name: userName,
-                            role: 'attendee',
-                            phone: contactData.phone || null,
-                            email: contactData.email || null,
-                            company: contactData.company || null,
-                            title: contactData.title || null
+                            ...buildAttendeeProfilePatch(userName, attendeeCategory, contactData),
                         }
                     ]);
                     if (insertError) {
@@ -162,17 +179,21 @@ export const LoginView: React.FC = () => {
                 // Login was successful! 
                 // But if the 'profiles' db table got wiped, their Auth user exists but profile is missing.
                 // Fail-safe: Ensure their row exists in 'profiles'
-                const { error: profileCheckError } = await supabase.from('profiles').upsert([
-                    {
-                        id: signInData.user.id,
-                        name: userName,
-                        role: 'attendee',
-                        phone: contactData.phone || null,
-                        email: contactData.email || null,
-                        company: contactData.company || null,
-                        title: contactData.title || null
-                    }
-                ], { onConflict: 'id', ignoreDuplicates: true });
+                const attendeeProfilePatch = buildAttendeeProfilePatch(userName, attendeeCategory, contactData);
+                const { data: existingProfile } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('id', signInData.user.id)
+                    .maybeSingle();
+
+                const profileCheckError = existingProfile
+                    ? (await supabase
+                        .from('profiles')
+                        .update(attendeeProfilePatch)
+                        .eq('id', signInData.user.id)).error
+                    : (await supabase
+                        .from('profiles')
+                        .insert([{ id: signInData.user.id, ...attendeeProfilePatch }])).error;
 
                 if (profileCheckError) {
                     console.error("Silent profile recovery failed:", profileCheckError);

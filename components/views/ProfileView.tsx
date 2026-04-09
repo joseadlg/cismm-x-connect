@@ -4,11 +4,12 @@ import { UserProfile, View } from '../../types';
 import { Cog6ToothIcon, CameraIcon } from '../Icons'; // Assume CameraIcon is available or use emoji for now, we'll see
 import { supabase } from '../../utils/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import imageCompression from 'browser-image-compression';
 import { useToast } from '../../contexts/ToastContext';
+import { getAcceptedImageTypes, getImageUploadHint, removePublicImage, uploadPublicImage } from '../../utils/storageImages';
 
 import QRious from 'qrious';
 import { generateSecureToken } from '../../utils/security';
+import { getAttendeeCategoryLabel } from '../../utils/attendeeCategory';
 
 interface ProfileViewProps {
   user: UserProfile;
@@ -30,34 +31,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
 
     setIsUploading(true);
     try {
-      // 1. Compress image client-side to save bandwidth
-      const options = {
-        maxSizeMB: 0.1, // 100 KB max
-        maxWidthOrHeight: 400,
-        useWebWorker: true,
-      };
-      showToast('Comprimiendo imagen...', 'info');
-      const compressedFile = await imageCompression(file, options);
+      showToast('Optimizando y subiendo foto...', 'info');
+      const { publicUrl } = await uploadPublicImage({
+        bucket: 'avatars',
+        file,
+        entityKey: user.id,
+        fileSlug: user.name,
+      });
 
-      // 2. Generate unique filename
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      showToast('Subiendo foto...', 'info');
-
-      // 3. Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, compressedFile, { upsert: true });
-
-      if (uploadError) throw new Error('Error al subir la imagen: ' + uploadError.message);
-
-      // 4. Get Public URL
-      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-      const publicUrl = data.publicUrl;
-
-      // 5. Update user profile in database
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ photo_url: publicUrl })
@@ -65,8 +46,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
 
       if (updateError) throw new Error('Error al actualizar el perfil: ' + updateError.message);
 
-      // 6. Refresh Auth Context to show new photo instantly
       await refreshProfile();
+      await removePublicImage({ bucket: 'avatars', publicUrl: user.photoUrl });
       showToast('Foto de perfil actualizada exitosamente!', 'success');
 
     } catch (error: any) {
@@ -79,16 +60,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
   };
 
   useEffect(() => {
-    const generateQR = async () => {
-      if (qrRef.current) {
-        let qrValue = '';
+    let isCancelled = false;
 
-        if (user.role === 'exhibitor' && user.exhibitorId) {
-          // Exhibitor QR: minimal data for stand check-in
-          qrValue = JSON.stringify({ exhibitorId: user.exhibitorId, name: user.company || user.name });
-        } else {
-          // Attendee/Speaker QR: just id + name — keeps QR simple and scannable
-          qrValue = JSON.stringify({ id: user.id, name: user.name });
+    const generateQR = async () => {
+      if (!qrRef.current) {
+        return;
+      }
+
+      try {
+        const qrValue = user.role === 'exhibitor' && user.exhibitorId
+          ? await generateSecureToken({ exhibitorId: user.exhibitorId, name: user.company || user.name })
+          : await generateSecureToken({ id: user.id, name: user.name, attendeeCategory: user.attendeeCategory });
+
+        if (isCancelled || !qrRef.current) {
+          return;
         }
 
         new QRious({
@@ -100,9 +85,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
           level: 'M', // Medium error correction — balances reliability vs density
           padding: 10,
         });
+      } catch (error) {
+        console.error('Error generating secure QR:', error);
       }
     };
-    generateQR();
+
+    void generateQR();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [user]);
 
   return (
@@ -130,13 +122,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
             type="file"
             ref={fileInputRef}
             onChange={handleImageUpload}
-            accept="image/jpeg, image/png, image/webp"
+            accept={getAcceptedImageTypes('avatars')}
             className="hidden"
           />
         </div>
+        <p className="text-xs text-gray-400 mt-2">{getImageUploadHint('avatars')}</p>
         <h2 className="text-2xl font-bold text-brand-primary mt-4">{user.name}</h2>
         <p className="text-lg text-brand-secondary">{user.title}</p>
         <p className="text-gray-600">{user.company}</p>
+        {user.role === 'attendee' && (
+          <div className="mt-3">
+            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${user.attendeeCategory === 'vip' ? 'bg-amber-100 text-amber-800' : user.attendeeCategory === 'juez' ? 'bg-cyan-100 text-cyan-800' : 'bg-slate-100 text-slate-700'}`}>
+              Categoría: {getAttendeeCategoryLabel(user.attendeeCategory)}
+            </span>
+          </div>
+        )}
         <div className="mt-4">
           <h3 className="font-semibold text-brand-primary mb-2">Mi Código QR</h3>
           <p className="text-sm text-gray-500 mb-2">

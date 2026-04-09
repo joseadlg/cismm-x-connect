@@ -5,6 +5,7 @@ export interface ParsedVCard {
     title?: string;
     email?: string;
     phone?: string;
+    attendeeCategory?: string;
 }
 
 export const parseVCard = (vcardStr: string): ParsedVCard | null => {
@@ -51,6 +52,12 @@ export const parseVCard = (vcardStr: string): ParsedVCard | null => {
                 break;
             case 'UID':
                 result.id = value.replace('urn:uuid:', '');
+                break;
+            case 'CATEGORIES':
+            case 'CATEGORY':
+            case 'X-CISMM-CATEGORY':
+            case 'X-ATTENDEE-CATEGORY':
+                result.attendeeCategory = value.split(',')[0]?.trim();
                 break;
             default:
                 break;

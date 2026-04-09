@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { parseVCard } from '../../utils/vcardParser';
+import { parseQrData } from '../../utils/qr';
 
 interface ScannerViewProps {
   onScanSuccess: (data: any) => void;
@@ -12,34 +12,22 @@ export const ScannerView: React.FC<ScannerViewProps> = ({ onScanSuccess }) => {
   const [isStarted, setIsStarted] = useState(false);
   const scannerRef = useRef<any>(null);
 
-  const processQR = (decodedText: string) => {
+  const processQR = async (decodedText: string) => {
     try {
-      let contactData: any;
+      const qrResult = await parseQrData(decodedText);
 
-      const vcard = parseVCard(decodedText);
-      if (vcard) {
-        contactData = {
-          id: vcard.id || vcard.email || vcard.name,
-          name: vcard.name || "Asistente " + (vcard.email || "Desconocido"),
-          company: vcard.company || "",
-          title: vcard.title || "",
-          email: vcard.email || "",
-          phone: vcard.phone || ""
-        };
-      } else {
-        try {
-          contactData = JSON.parse(decodedText);
-        } catch {
-          try {
-            contactData = JSON.parse(atob(decodedText));
-          } catch {
-            throw new Error("Invalid format");
-          }
-        }
+      if (!qrResult.ok) {
+        setError(
+          qrResult.reason === 'invalid_security'
+            ? "Código QR inválido o manipulado."
+            : "Error al procesar el código QR."
+        );
+        return;
       }
-      if (contactData.payload && contactData.signature) {
-        onScanSuccess(contactData);
-      } else if ((contactData.id && contactData.name) || contactData.exhibitorId) {
+
+      const contactData = qrResult.data;
+
+      if ((contactData.id && contactData.name) || contactData.exhibitorId) {
         onScanSuccess(contactData);
       } else {
         setError("Código QR no válido. No es un perfil de CISMM X Connect.");
@@ -63,7 +51,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({ onScanSuccess }) => {
       } as any,
       (decodedText: string) => {
         setScanResult(decodedText);
-        processQR(decodedText);
+        void processQR(decodedText);
         qr.stop().catch(console.error);
       },
       () => { /* ignore per-frame errors */ }

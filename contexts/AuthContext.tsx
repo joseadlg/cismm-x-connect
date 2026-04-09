@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabase';
 import { UserProfile } from '../types';
+import { getOrCreateDeviceId } from '../utils/device';
+import { normalizeAttendeeCategory } from '../utils/attendeeCategory';
 
 interface AuthContextType {
     session: Session | null;
@@ -27,14 +29,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const getDeviceId = () => {
-        let deviceId = localStorage.getItem('cismm_device_id');
-        if (!deviceId) {
-            deviceId = crypto.randomUUID();
-            localStorage.setItem('cismm_device_id', deviceId);
-        }
-        return deviceId;
-    };
+    const getDeviceId = () => getOrCreateDeviceId();
 
     const fetchProfile = async (userId: string) => {
         try {
@@ -77,7 +72,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 interests: (data.interests as string[]) || [],
                 role: data.role as any,
                 track: data.track as any,
+                attendeeCategory: normalizeAttendeeCategory(data.attendee_category),
                 exhibitorId: data.exhibitor_id || undefined,
+                speakerId: data.speaker_id || undefined,
                 deviceId: data.device_id || undefined,
                 points: data.points || 0,
                 maxDevices: data.max_devices,
