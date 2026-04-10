@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { View, UserProfile, Speaker, Exhibitor, AgendaSession, LeaderboardEntry, UserRole, NewsPost } from './types';
-import { INITIAL_EXHIBITOR_CATEGORIES } from './constants';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginView } from './components/views/LoginView';
 import { useAppData } from './hooks/useAppData';
@@ -102,11 +101,9 @@ const MainApp = () => {
     exhibitors,
     leaderboard,
     newsPosts,
-    exhibitorCategories,
     setSpeakers,
     setExhibitors,
     setAgendaSessions,
-    setExhibitorCategories,
     unreadNewsCount,
     loading,
     setUnreadNewsCount,
@@ -363,7 +360,7 @@ const MainApp = () => {
       case 'PROFILE': return <ProfileView user={profile} contacts={contacts} setActiveView={setActiveView} />;
       case 'GAMIFICATION': return <GamificationView leaderboard={leaderboard} userPoints={points} />;
       case 'INFO': return <InfoView />;
-      case 'ADMIN': return userRole === 'admin' ? <AdminView speakers={speakers} exhibitors={exhibitors} agendaSessions={agendaSessions} setSpeakers={setSpeakers} setExhibitors={setExhibitors} setAgendaSessions={setAgendaSessions} contacts={contacts} setContacts={setContacts} exhibitorCategories={exhibitorCategories} setExhibitorCategories={setExhibitorCategories} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Se requieren permisos de administrador.</div>;
+      case 'ADMIN': return userRole === 'admin' ? <AdminView speakers={speakers} exhibitors={exhibitors} agendaSessions={agendaSessions} setSpeakers={setSpeakers} setExhibitors={setExhibitors} setAgendaSessions={setAgendaSessions} contacts={contacts} setContacts={setContacts} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Se requieren permisos de administrador.</div>;
       case 'MY_STAND': return userRole === 'exhibitor' ? <ExhibitorDashboard user={{ ...profile, role: userRole }} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Solo para expositores.</div>;
       case 'NEWS': return <NewsBoard posts={newsPosts} userRole={userRole} currentUserName={profile.name} onCreatePost={handleCreatePost} onDeletePost={handleDeletePost} />;
       default: return <DashboardView myAgenda={myAgenda} allSessions={agendaSessions} setActiveView={setActiveView} points={points} speakers={speakers} userRole={userRole} exhibitors={exhibitors} user={profile} />;

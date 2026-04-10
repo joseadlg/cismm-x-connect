@@ -23,12 +23,11 @@ export const useAppData = (userId: string | undefined) => {
     const fetchPublicData = async () => {
         try {
             const [
-                { data: sData }, { data: eData }, { data: aData }, { data: cData }, { data: nData }, { data: lData }
+                { data: sData }, { data: eData }, { data: aData }, { data: nData }, { data: lData }
             ] = await Promise.all([
                 supabase.from('speakers').select('*'),
-                supabase.from('exhibitors').select('*, exhibitor_categories(name)'),
+                supabase.from('exhibitors').select('*'),
                 supabase.from('agenda_sessions').select('*, session_speakers(speaker_id)'),
-                supabase.from('exhibitor_categories').select('*'),
                 supabase.from('news_posts').select('*').order('created_at', { ascending: false }),
                 supabase.from('profiles').select('name, points, photo_url').eq('role', 'attendee').order('points', { ascending: false }).limit(10)
             ]);
@@ -37,12 +36,12 @@ export const useAppData = (userId: string | undefined) => {
                 id: s.id, name: s.name, photoUrl: s.photo_url || '', title: s.title || '', company: s.company || '', bio: s.bio || '', social: { linkedin: s.social_linkedin || undefined, twitter: s.social_twitter || undefined }
             })));
             if (eData) setExhibitors(eData.map(e => ({
-                id: e.id, name: e.name, logoUrl: e.logo_url || '', description: e.description || '', contact: e.contact || '', website: e.website || '', standNumber: e.stand_number || '', category: (e.exhibitor_categories as any)?.name || ''
+                id: e.id, name: e.name, logoUrl: e.logo_url || '', description: e.description || '', contact: e.contact || '', website: e.website || '', standNumber: e.stand_number || '', category: ''
             })));
             if (aData) setAgendaSessions(aData.map(a => ({
                 id: a.id, title: a.title, startTime: a.start_time, endTime: a.end_time, room: a.room || '', description: a.description || '', day: a.day as any, track: a.track as any, speakerIds: Array.isArray(a.session_speakers) ? a.session_speakers.map((ss: any) => ss.speaker_id) : []
             })));
-            if (cData) setExhibitorCategories(cData.map(c => c.name));
+            setExhibitorCategories([]);
             if (nData) setNewsPosts(nData.map(n => ({
                 id: n.id, title: n.title, content: n.content, authorName: n.author_name, authorRole: n.author_role as any, timestamp: n.created_at || '', category: n.category as any
             })));

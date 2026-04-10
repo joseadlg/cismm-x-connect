@@ -91,7 +91,6 @@ export const DashboardView = ({ myAgenda, allSessions, setActiveView, points, sp
             <div key={exhibitor.id} className="border rounded-lg p-3 text-center hover:shadow-md transition-shadow cursor-pointer" onClick={() => setActiveView('EXHIBITORS')}>
               <img src={exhibitor.logoUrl} alt={exhibitor.name} className="w-16 h-16 mx-auto mb-2 object-contain" />
               <p className="font-semibold text-sm truncate">{exhibitor.name}</p>
-              <p className="text-xs text-gray-500 truncate">{exhibitor.category}</p>
             </div>
           ))}
         </div>

@@ -20,8 +20,6 @@ interface AdminViewProps {
     setAgendaSessions: (value: AgendaSession[] | ((prevState: AgendaSession[]) => AgendaSession[])) => void;
     contacts: UserProfile[];
     setContacts: (value: UserProfile[] | ((prevState: UserProfile[]) => UserProfile[])) => void;
-    exhibitorCategories: string[];
-    setExhibitorCategories: (value: string[] | ((prevState: string[]) => string[])) => void;
 }
 
 const AdminSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
@@ -54,8 +52,8 @@ const FormField: React.FC<{ label: string, id: string, value: string, onChange: 
         </div>
     );
 
-export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agendaSessions, setSpeakers, setExhibitors, setAgendaSessions, contacts, setContacts, exhibitorCategories, setExhibitorCategories }) => {
-    const [modalConfig, setModalConfig] = useState<{ type: 'speaker' | 'exhibitor' | 'session' | 'category' | 'userAccount' | 'attendeeQr' | null, item?: any }>({ type: null });
+export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agendaSessions, setSpeakers, setExhibitors, setAgendaSessions, contacts, setContacts }) => {
+    const [modalConfig, setModalConfig] = useState<{ type: 'speaker' | 'exhibitor' | 'session' | 'userAccount' | 'attendeeQr' | null, item?: any }>({ type: null });
     const [generatedQrConfig, setGeneratedQrConfig] = useState<any | null>(null);
 
     // Fetch ALL profiles from the database for user management
@@ -137,13 +135,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
     });
 
     const refreshExhibitorAdminData = async () => {
-        const [{ data: exhibitorRows, error: exhibitorError }, { data: categoryRows, error: categoryError }] = await Promise.all([
-            supabase.from('exhibitors').select('*, exhibitor_categories(name)').order('name'),
-            supabase.from('exhibitor_categories').select('*').order('name')
-        ]);
+        const { data: exhibitorRows, error: exhibitorError } = await supabase
+            .from('exhibitors')
+            .select('*')
+            .order('name');
 
         if (exhibitorError) throw exhibitorError;
-        if (categoryError) throw categoryError;
 
         setExhibitors((exhibitorRows || []).map((e: any) => ({
             id: e.id,
@@ -153,10 +150,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
             contact: e.contact || '',
             website: e.website || '',
             standNumber: e.stand_number || '',
-            category: (e.exhibitor_categories as any)?.name || ''
+            category: ''
         })));
-
-        setExhibitorCategories((categoryRows || []).map((category: any) => category.name));
     };
 
     const refreshSpeakerAdminData = async () => {
@@ -185,7 +180,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
         fetchAllUsers();
     }, []);
 
-    const openModal = (type: 'speaker' | 'exhibitor' | 'session' | 'category' | 'userAccount' | 'attendeeQr', item?: any) => {
+    const openModal = (type: 'speaker' | 'exhibitor' | 'session' | 'userAccount' | 'attendeeQr', item?: any) => {
         setModalConfig({ type, item: item || null });
     };
 
@@ -259,7 +254,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
         return publicUrl;
     };
 
-    const handleSave = async (type: 'speaker' | 'exhibitor' | 'session' | 'category' | 'userAccount' | 'attendeeQr', data: any) => {
+    const handleSave = async (type: 'speaker' | 'exhibitor' | 'session' | 'userAccount' | 'attendeeQr', data: any) => {
         const isNew = !data.id;
 
         try {
@@ -358,8 +353,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                             description: data.description,
                             contact: data.contact,
                             website: data.website,
-                            standNumber: data.standNumber,
-                            category: data.category
+                            standNumber: data.standNumber
                         });
 
                         if (data.imageFile) {
@@ -372,8 +366,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                                     description: data.description,
                                     contact: data.contact,
                                     website: data.website,
-                                    standNumber: data.standNumber,
-                                    category: data.category
+                                    standNumber: data.standNumber
                                 });
                             }
                         }
@@ -404,8 +397,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                             description: data.description,
                             contact: data.contact,
                             website: data.website,
-                            standNumber: data.standNumber,
-                            category: data.category
+                            standNumber: data.standNumber
                         });
 
                         if (data.imageFile) {
@@ -418,8 +410,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                                     description: data.description,
                                     contact: data.contact,
                                     website: data.website,
-                                    standNumber: data.standNumber,
-                                    category: data.category
+                                    standNumber: data.standNumber
                                 });
 
                                 await removePublicImage({ bucket: 'exhibitors', publicUrl: data.previousLogoUrl });
@@ -476,30 +467,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                     }
 
                     await refreshAgendaAdminData();
-                    break;
-                }
-                case 'category': {
-                    const newCategoryName = data.name.trim();
-                    if (!newCategoryName) return;
-
-                    if (modalConfig.item) {
-                        const oldName = modalConfig.item.name;
-                        if (oldName !== newCategoryName) {
-                            if (exhibitorCategories.includes(newCategoryName)) {
-                                alert('Esta categoría ya existe.');
-                                return;
-                            }
-                            await invokeManageUsers('UPDATE_EXHIBITOR_CATEGORY', { oldName, newName: newCategoryName });
-                            await refreshExhibitorAdminData();
-                        }
-                    } else {
-                        if (exhibitorCategories.includes(newCategoryName)) {
-                            alert('Esta categoría ya existe.');
-                            return;
-                        }
-                        await invokeManageUsers('CREATE_EXHIBITOR_CATEGORY', { name: newCategoryName });
-                        await refreshExhibitorAdminData();
-                    }
                     break;
                 }
                 case 'userAccount': {
@@ -565,7 +532,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
         }
     };
 
-    const handleDelete = async (type: 'speaker' | 'exhibitor' | 'session' | 'user' | 'category', id: any) => {
+    const handleDelete = async (type: 'speaker' | 'exhibitor' | 'session' | 'user', id: any) => {
         if (!window.confirm('¿Estás seguro de que quieres eliminar este elemento?')) return;
         try {
             switch (type) {
@@ -590,10 +557,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
                     await fetchAllUsers();
                     break;
                 }
-                case 'category':
-                    await invokeManageUsers('DELETE_EXHIBITOR_CATEGORY', { categoryName: id });
-                    await refreshExhibitorAdminData();
-                    break;
             }
         } catch (err: any) {
             alert('Error al eliminar en base de datos: ' + err.message);
@@ -617,9 +580,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
 
         const FormComponent = {
             speaker: (props: any) => <SpeakerForm {...props} linkedAccount={props.item ? getLinkedSpeakerAccount(props.item.id) : undefined} />,
-            exhibitor: (props: any) => <ExhibitorForm {...props} categories={exhibitorCategories} linkedAccount={props.item ? getLinkedExhibitorAccount(props.item.id) : undefined} />,
+            exhibitor: (props: any) => <ExhibitorForm {...props} linkedAccount={props.item ? getLinkedExhibitorAccount(props.item.id) : undefined} />,
             session: (props: any) => <SessionForm {...props} speakers={speakers} />,
-            category: CategoryForm,
             userAccount: UserAccountForm,
             attendeeQr: AttendeeQrForm
         }[modalConfig.type];
@@ -643,10 +605,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
 
             <AdminSection title={`Expositores (${exhibitors.length})`}>
                 <ManagementList type="exhibitor" items={exhibitors} onEdit={openModal} onDelete={handleDelete} displayField="name" />
-            </AdminSection>
-
-            <AdminSection title={`Categorías de Expositores (${exhibitorCategories.length})`}>
-                <ManagementList type="category" items={exhibitorCategories.map(c => ({ id: c, name: c }))} onEdit={openModal} onDelete={handleDelete} displayField="name" idField="id" />
             </AdminSection>
 
             <AdminSection title={`Agenda (${agendaSessions.length})`}>
@@ -851,13 +809,13 @@ const SpeakerForm: React.FC<{ item?: Speaker, linkedAccount?: UserProfile, onSav
     );
 };
 
-const ExhibitorForm: React.FC<{ item?: Exhibitor, linkedAccount?: UserProfile, categories: string[], onSave: (data: any) => void, onClose: () => void }> = ({ item, linkedAccount, categories, onSave, onClose }) => {
+const ExhibitorForm: React.FC<{ item?: Exhibitor, linkedAccount?: UserProfile, onSave: (data: any) => void, onClose: () => void }> = ({ item, linkedAccount, onSave, onClose }) => {
     const generatePassword = () => {
         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
         let pw = ''; for (let i = 0; i < 12; i++) pw += chars.charAt(Math.floor(Math.random() * chars.length)); return pw;
     };
     const toUsername = (name: string) => name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
-    const [formData, setFormData] = useState(item || { name: '', description: '', contact: '', website: '', standNumber: '', category: categories.length > 0 ? categories[0] : '', logoUrl: '' });
+    const [formData, setFormData] = useState(item || { name: '', description: '', contact: '', website: '', standNumber: '', category: '', logoUrl: '' });
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [password, setPassword] = useState(generatePassword());
     const [createAccount, setCreateAccount] = useState(!item);
@@ -882,11 +840,6 @@ const ExhibitorForm: React.FC<{ item?: Exhibitor, linkedAccount?: UserProfile, c
                 <FormField label="Contacto (email del stand)" id="contact" value={formData.contact} onChange={handleChange} required={false} />
                 <FormField label="Sitio Web" id="website" value={formData.website} onChange={handleChange} required={false} />
                 <FormField label="Nº de Stand" id="standNumber" value={formData.standNumber} onChange={handleChange} required={false} />
-                <FormField label="Categoría" id="category" value={formData.category} onChange={handleChange} required={false}>
-                    {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                </FormField>
                 <StaffAccessPanel
                     linkedAccount={linkedAccount}
                     createAccount={createAccount}

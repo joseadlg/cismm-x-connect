@@ -22,7 +22,6 @@ const ExhibitorDetail: React.FC<{ exhibitor: Exhibitor; onClose: () => void; }> 
             <p className="text-gray-700 my-4">{exhibitor.description}</p>
             <div className="space-y-2 text-sm">
                 <p><span className="font-semibold">Stand:</span> <span className="bg-brand-accent text-white px-2 py-1 rounded-full">{exhibitor.standNumber}</span></p>
-                <p><span className="font-semibold">Categoría:</span> {exhibitor.category}</p>
                 <p><span className="font-semibold">Contacto:</span> <a href={`mailto:${exhibitor.contact}`} className="text-blue-600">{exhibitor.contact}</a></p>
                 <p><span className="font-semibold">Sitio Web:</span> <a href={exhibitor.website} target="_blank" rel="noopener noreferrer" className="text-blue-600">Visitar</a></p>
             </div>
@@ -33,17 +32,11 @@ const ExhibitorDetail: React.FC<{ exhibitor: Exhibitor; onClose: () => void; }> 
 export const ExhibitorsView: React.FC<ExhibitorsViewProps> = ({ exhibitors }) => {
   const [selectedExhibitor, setSelectedExhibitor] = useState<Exhibitor | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
-
-  const categories = ['All', ...Array.from(new Set(exhibitors.map(e => e.category)))];
-
   const filteredExhibitors = useMemo(() => {
-    return exhibitors.filter(exhibitor => {
-      const matchesSearch = exhibitor.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === 'All' || exhibitor.category === selectedCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [exhibitors, searchTerm, selectedCategory]);
+    return exhibitors.filter(exhibitor =>
+      exhibitor.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [exhibitors, searchTerm]);
 
   return (
     <div className="p-4">
@@ -55,17 +48,6 @@ export const ExhibitorsView: React.FC<ExhibitorsViewProps> = ({ exhibitors }) =>
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-brand-accent focus:border-brand-accent"
         />
-        <div className="flex space-x-2 overflow-x-auto pb-2">
-          {categories.map(category => (
-            <button
-              key={category}
-              onClick={() => setSelectedCategory(category)}
-              className={`px-3 py-1 text-sm font-semibold rounded-full whitespace-nowrap ${selectedCategory === category ? 'bg-brand-primary text-white' : 'bg-gray-200 text-gray-700'}`}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {filteredExhibitors.map(exhibitor => (
