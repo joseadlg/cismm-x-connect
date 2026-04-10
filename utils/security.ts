@@ -14,9 +14,12 @@ type EncryptedSecureToken = {
     signature: string;
 };
 
+type CompactSecurePayload = Record<string, unknown>;
+
 type SecureToken = LegacySecureToken | EncryptedSecureToken;
 
 const SECURE_TOKEN_VERSION = 2;
+const COMPACT_TOKEN_PREFIX = 'cx1';
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -78,6 +81,12 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
     return btoa(binary);
 };
 
+const bytesToBase64Url = (bytes: Uint8Array): string =>
+    bytesToBase64(bytes)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+
 const base64ToBytes = (value: string): Uint8Array => {
     const binary = atob(value);
     const bytes = new Uint8Array(binary.length);
@@ -87,6 +96,15 @@ const base64ToBytes = (value: string): Uint8Array => {
     }
 
     return bytes;
+};
+
+const base64UrlToBytes = (value: string): Uint8Array => {
+    const base64Value = value
+        .replace(/-/g, '+')
+        .replace(/_/g, '/')
+        .padEnd(value.length + ((4 - (value.length % 4)) % 4), '=');
+
+    return base64ToBytes(base64Value);
 };
 
 const fromHex = (hex: string): Uint8Array | null => {
@@ -145,6 +163,13 @@ const signString = async (value: string): Promise<string> => {
     return toHex(signature);
 };
 
+const signStringToBase64Url = async (value: string): Promise<string> => {
+    const key = await getHmacKey();
+    const signature = await crypto.subtle.sign('HMAC', key, textEncoder.encode(value));
+
+    return bytesToBase64Url(new Uint8Array(signature));
+};
+
 const verifySignature = async (value: string, signature: string): Promise<boolean> => {
     const signatureBytes = fromHex(signature);
 
@@ -155,6 +180,17 @@ const verifySignature = async (value: string, signature: string): Promise<boolea
     const key = await getHmacKey();
 
     return crypto.subtle.verify('HMAC', key, signatureBytes, textEncoder.encode(value));
+};
+
+const verifySignatureBase64Url = async (value: string, signature: string): Promise<boolean> => {
+    try {
+        const key = await getHmacKey();
+        const signatureBytes = base64UrlToBytes(signature);
+
+        return crypto.subtle.verify('HMAC', key, signatureBytes, textEncoder.encode(value));
+    } catch {
+        return false;
+    }
 };
 
 const parseSecureToken = (token: string | unknown): SecureToken | null => {
@@ -189,8 +225,39 @@ const parseSecureToken = (token: string | unknown): SecureToken | null => {
     return null;
 };
 
+const compactKeyMap: Record<string, string> = {
+    id: 'i',
+    exhibitorId: 'x',
+    name: 'n',
+    attendeeCategory: 'a',
+    loginEmail: 'l',
+    email: 'm',
+    phone: 'p',
+    company: 'c',
+    title: 't',
+    deviceId: 'd',
+    _ts: 's',
+};
+
+const reverseCompactKeyMap = Object.fromEntries(
+    Object.entries(compactKeyMap).map(([key, value]) => [value, key])
+);
+
+const compactPayload = (payload: SecureTokenPayload): CompactSecurePayload =>
+    Object.fromEntries(
+        Object.entries(payload)
+            .filter(([, value]) => value !== undefined && value !== null && value !== '')
+            .map(([key, value]) => [compactKeyMap[key] ?? key, value])
+    );
+
+const expandCompactPayload = (payload: CompactSecurePayload): SecureTokenPayload =>
+    Object.fromEntries(
+        Object.entries(payload).map(([key, value]) => [reverseCompactKeyMap[key] ?? key, value])
+    );
+
 export const isSecureTokenLike = (token: string | unknown): boolean =>
-    parseSecureToken(token) !== null;
+    (typeof token === 'string' && token.startsWith(`${COMPACT_TOKEN_PREFIX}.`))
+    || parseSecureToken(token) !== null;
 
 export const generateSecureToken = async (data: SecureTokenPayload): Promise<string> => {
     const payload = { ...data, _ts: Date.now() };
@@ -217,8 +284,33 @@ export const generateSecureToken = async (data: SecureTokenPayload): Promise<str
     return btoa(jsonString);
 };
 
+export const generateCompactSecureToken = async (data: SecureTokenPayload): Promise<string> => {
+    const payload = compactPayload({ ...data, _ts: Date.now() });
+    const payloadSegment = bytesToBase64Url(textEncoder.encode(JSON.stringify(payload)));
+    const signatureSegment = await signStringToBase64Url(payloadSegment);
+
+    return `${COMPACT_TOKEN_PREFIX}.${payloadSegment}.${signatureSegment}`;
+};
+
 export const verifySecureToken = async (token: string | SecureToken): Promise<SecureTokenPayload | null> => {
     try {
+        if (typeof token === 'string' && token.startsWith(`${COMPACT_TOKEN_PREFIX}.`)) {
+            const [, payloadSegment, signatureSegment] = token.split('.');
+
+            if (!payloadSegment || !signatureSegment) {
+                return null;
+            }
+
+            const isCompactTokenValid = await verifySignatureBase64Url(payloadSegment, signatureSegment);
+
+            if (!isCompactTokenValid) {
+                return null;
+            }
+
+            const compactPayloadValue = JSON.parse(textDecoder.decode(base64UrlToBytes(payloadSegment))) as CompactSecurePayload;
+            return expandCompactPayload(compactPayloadValue);
+        }
+
         const tokenObj = parseSecureToken(token);
 
         if (!tokenObj) {

@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { getAcceptedImageTypes, getImageUploadHint, removePublicImage, uploadPublicImage } from '../../utils/storageImages';
 import QRious from 'qrious';
-import { generateSecureToken } from '../../utils/security';
+import { generateCompactSecureToken } from '../../utils/security';
 import { getAttendeeCategoryLabel } from '../../utils/attendeeCategory';
 
 interface ProfileViewProps {
@@ -283,10 +283,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
         return;
       }
 
-      try {
-        const qrValue = user.role === 'exhibitor' && user.exhibitorId
-          ? await generateSecureToken({ exhibitorId: user.exhibitorId, name: user.company || user.name })
-          : await generateSecureToken({ id: user.id, name: user.name, attendeeCategory: user.attendeeCategory });
+        try {
+          const qrValue = user.role === 'exhibitor' && user.exhibitorId
+          ? await generateCompactSecureToken({ exhibitorId: user.exhibitorId, name: user.company || user.name })
+          : await generateCompactSecureToken({ id: user.id, name: user.name, attendeeCategory: user.attendeeCategory });
 
         if (isCancelled || !qrRef.current) {
           return;
@@ -295,11 +295,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
         new QRious({
           element: qrRef.current,
           value: qrValue,
-          size: 250,
+          size: 280,
           background: 'white',
           foreground: '#0D2A4C',
-          level: 'M',
-          padding: 10,
+          level: 'L',
+          padding: 14,
         });
       } catch (error) {
         console.error('Error generating secure QR:', error);

@@ -9,7 +9,7 @@ import { AdminSessionRating } from '../../types';
 import { getAttendeeCategoryLabel, normalizeAttendeeCategory } from '../../utils/attendeeCategory';
 import { getAcceptedImageTypes, getImageUploadHint, removePublicImage, uploadPublicImage } from '../../utils/storageImages';
 import QRious from 'qrious';
-import { generateSecureToken } from '../../utils/security';
+import { generateCompactSecureToken } from '../../utils/security';
 import { sortAgendaSessions } from '../../utils/agendaSort';
 
 interface AdminViewProps {
@@ -1092,7 +1092,7 @@ const GeneratedAttendeeQrModal: React.FC<{ config: any, onClose: () => void }> =
             setQrError(null);
 
             try {
-                const secureQrPayload = await generateSecureToken({
+                const secureQrPayload = await generateCompactSecureToken({
                     id: config.userId,
                     loginEmail: config.loginEmail,
                     name: config.name,
@@ -1110,11 +1110,11 @@ const GeneratedAttendeeQrModal: React.FC<{ config: any, onClose: () => void }> =
                 new QRious({
                     element: qrCanvasRef.current,
                     value: secureQrPayload,
-                    size: 260,
+                    size: 320,
                     background: 'white',
                     foreground: '#0D2A4C',
-                    level: 'M',
-                    padding: 10,
+                    level: 'L',
+                    padding: 16,
                 });
             } catch (error) {
                 console.error('Failed to generate attendee QR:', error);

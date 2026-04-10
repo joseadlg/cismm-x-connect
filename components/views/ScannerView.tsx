@@ -108,8 +108,8 @@ export const ScannerView: React.FC<ScannerViewProps> = ({ onScanSuccess }) => {
       {/* Reader fills full width — NO max-w cap so camera is as large as possible */}
       <div
         id="reader"
-        className="w-full max-w-sm mx-auto rounded-xl overflow-hidden border border-slate-200 bg-black"
-        style={{ height: '24rem', maxHeight: '60vh' }}
+        className="w-full max-w-xs mx-auto rounded-xl overflow-hidden border border-slate-200 bg-black"
+        style={{ height: '20rem', maxHeight: '50vh' }}
       />
 
       {scanResult && !error && (

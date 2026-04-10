@@ -318,8 +318,8 @@ export const LoginView: React.FC = () => {
                                 </p>
 
                                 <div
-                                    className="w-full max-w-sm mx-auto relative overflow-hidden rounded-xl shadow-md border border-slate-200 bg-black"
-                                    style={{ height: '24rem', maxHeight: '52vh' }}
+                                    className="w-full max-w-xs mx-auto relative overflow-hidden rounded-xl shadow-md border border-slate-200 bg-black"
+                                    style={{ height: '20rem', maxHeight: '46vh' }}
                                 >
                                     <div id="login-reader" className="w-full" />
                                     {loading && (
