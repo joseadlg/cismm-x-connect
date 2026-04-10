@@ -21,6 +21,39 @@ export const useAppData = (userId: string | undefined) => {
     const [myRatings, setMyRatings] = useState<number[]>([]);
     const [contacts, setContacts] = useState<UserProfile[]>([]);
 
+    const fetchContacts = async (uid: string) => {
+        const { data: contactLogs, error } = await supabase
+            .from('user_contacts_log')
+            .select('contact_id, profiles!user_contacts_log_contact_id_fkey(id, name, title, company, photo_url, email, phone, role, attendee_category)')
+            .eq('user_id', uid);
+
+        if (error) {
+            throw error;
+        }
+
+        const fetchedContacts: UserProfile[] = (contactLogs || [])
+            .filter((c: any) => c.profiles)
+            .map((c: any) => {
+                const p = c.profiles;
+                return {
+                    id: p.id,
+                    name: p.name || '',
+                    title: p.title || '',
+                    company: p.company || '',
+                    photoUrl: p.photo_url || '',
+                    email: p.email || '',
+                    phone: p.phone || '',
+                    role: p.role || 'attendee',
+                    attendeeCategory: normalizeAttendeeCategory(p.attendee_category),
+                    points: 0,
+                    interests: [],
+                    track: 'General' as const,
+                };
+            });
+
+        setContacts(fetchedContacts);
+    };
+
     const fetchPublicData = async () => {
         try {
             const [
@@ -69,34 +102,7 @@ export const useAppData = (userId: string | undefined) => {
             if (userCheckins) setCheckedInSessions(userCheckins.map(u => u.session_id));
             if (userRatings) setMyRatings(userRatings.map(u => u.session_id));
 
-            // Fetch contacts from database (joined with profiles for full data)
-            const { data: contactLogs } = await supabase
-                .from('user_contacts_log')
-                .select('contact_id, profiles!user_contacts_log_contact_id_fkey(id, name, title, company, photo_url, email, phone, role, attendee_category)')
-                .eq('user_id', uid);
-
-            if (contactLogs) {
-                const fetchedContacts: UserProfile[] = contactLogs
-                    .filter((c: any) => c.profiles)
-                    .map((c: any) => {
-                        const p = c.profiles;
-                        return {
-                            id: p.id,
-                            name: p.name || '',
-                            title: p.title || '',
-                            company: p.company || '',
-                            photoUrl: p.photo_url || '',
-                            email: p.email || '',
-                            phone: p.phone || '',
-                            role: p.role || 'attendee',
-                            attendeeCategory: normalizeAttendeeCategory(p.attendee_category),
-                            points: 0,
-                            interests: [],
-                            track: 'General' as const,
-                        };
-                    });
-                setContacts(fetchedContacts);
-            }
+            await fetchContacts(uid);
         } catch (err) {
             console.error("Error fetching user data:", err);
         }
@@ -196,10 +202,34 @@ export const useAppData = (userId: string | undefined) => {
             )
             .subscribe();
 
+        const contactsChannel = userId
+            ? supabase.channel(`public:user_contacts_log:${userId}`)
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'user_contacts_log', filter: `user_id=eq.${userId}` },
+                    async () => {
+                        if (!isActive || !userId) {
+                            return;
+                        }
+
+                        try {
+                            await fetchContacts(userId);
+                        } catch (error) {
+                            console.error('Error syncing contacts:', error);
+                        }
+                    }
+                )
+                .subscribe()
+            : null;
+
         return () => {
             isActive = false;
             void newsChannel.unsubscribe();
             void agendaChannel.unsubscribe();
+            if (contactsChannel) {
+                void contactsChannel.unsubscribe();
+                void supabase.removeChannel(contactsChannel);
+            }
             void supabase.removeChannel(newsChannel);
             void supabase.removeChannel(agendaChannel);
         };

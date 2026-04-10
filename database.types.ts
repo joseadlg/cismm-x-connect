@@ -580,6 +580,12 @@ export type Database = {
       }
     }
     Functions: {
+      add_mutual_contact: {
+        Args: {
+          target_user_id: string
+        }
+        Returns: Json
+      }
       get_peak_activity_hours: {
         Args: never
         Returns: {

@@ -231,29 +231,38 @@ const MainApp = () => {
         return;
       }
 
-      if (!contacts.some(c => c.id === contact.id)) {
-        // Backend Validation for contact connections
-        const { error } = await supabase.from('user_contacts_log').insert({ user_id: profile.id, contact_id: contact.id });
+      const { data: contactSyncResult, error } = await supabase.rpc('add_mutual_contact', {
+        target_user_id: contact.id
+      });
 
-        if (error) {
-          if (error.code === '23505') {
-            showToast(`${contact.name} ya estaba en tus registros del servidor.`, 'info');
-            await refreshData(); // Refresh contacts from DB
-          } else {
-            showToast('Error al guardar contacto en el servidor.', 'error');
-          }
-        } else {
-          await refreshData(); // Refresh contacts from DB to get full profile data + photos
-          await handleAddPoints(100, `¡Contacto añadido: ${contact.name}!`);
-        }
+      if (error) {
+        showToast('Error al guardar contacto en el servidor.', 'error');
       } else {
-        showToast(`${contact.name} ya está en tus contactos.`, 'info');
+        const syncResult = (contactSyncResult || {}) as {
+          created_forward?: boolean;
+          created_reverse?: boolean;
+          is_self_scan?: boolean;
+        };
+
+        if (syncResult.is_self_scan) {
+          showToast('No puedes escanear tu propio QR para agregarte como contacto.', 'info');
+        } else if (syncResult.created_forward) {
+          await handleAddPoints(100, `¡Contacto añadido: ${contact.name}! También apareces en sus contactos.`);
+        } else {
+          await refreshData();
+
+          if (syncResult.created_reverse) {
+            showToast(`${contact.name} ya estaba en tus contactos. Ahora tú también apareces en los suyos.`, 'success');
+          } else {
+            showToast(`${contact.name} ya está en tus contactos.`, 'info');
+          }
+        }
       }
       setActiveView('PROFILE');
     } else {
       showToast('Código QR no reconocido.', 'error');
     }
-  }, [contacts, visitedExhibitors, deviceId, profile, handleAddPoints, showToast, refreshData, setVisitedExhibitors, setActiveView]);
+  }, [visitedExhibitors, deviceId, profile, handleAddPoints, showToast, refreshData, setVisitedExhibitors, setActiveView]);
 
   const handleSessionCheckIn = useCallback(async (sessionId: number) => {
     if (!profile) return;
@@ -357,7 +366,7 @@ const MainApp = () => {
       case 'SPEAKERS': return <SpeakersView speakers={speakers} agendaSessions={agendaSessions} />;
       case 'EXHIBITORS': return <ExhibitorsView exhibitors={exhibitors} />;
       case 'SCANNER': return <ScannerView onScanSuccess={handleScanSuccess} />;
-      case 'PROFILE': return <ProfileView user={profile} contacts={contacts} setActiveView={setActiveView} />;
+      case 'PROFILE': return <ProfileView user={profile} contacts={contacts} setActiveView={setActiveView} speaker={speakers.find(speaker => speaker.id === profile.speakerId)} exhibitor={exhibitors.find(exhibitor => exhibitor.id === profile.exhibitorId)} refreshData={refreshData} />;
       case 'GAMIFICATION': return <GamificationView leaderboard={leaderboard} userPoints={points} />;
       case 'INFO': return <InfoView />;
       case 'ADMIN': return userRole === 'admin' ? <AdminView speakers={speakers} exhibitors={exhibitors} agendaSessions={agendaSessions} setSpeakers={setSpeakers} setExhibitors={setExhibitors} setAgendaSessions={setAgendaSessions} contacts={contacts} setContacts={setContacts} /> : <div className="p-4 text-center text-red-600">Acceso denegado. Se requieren permisos de administrador.</div>;

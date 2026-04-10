@@ -224,17 +224,27 @@ serve(async (req) => {
 
         const { data: profile } = await supabaseAdmin
             .from('profiles')
-            .select('role, name')
+            .select('role, name, speaker_id, exhibitor_id')
             .eq('id', user.id)
             .single();
         const isAdmin = profile?.role === 'admin';
         const canManageNews = isAdmin || profile?.role === 'exhibitor';
+        const canSelfUpdateSpeaker = profile?.role === 'speaker' && !!profile?.speaker_id;
+        const canSelfUpdateExhibitor = profile?.role === 'exhibitor' && !!profile?.exhibitor_id;
 
-        if (!isAdmin && action !== 'CREATE_NEWS_POST' && action !== 'DELETE_NEWS_POST') {
+        if (!isAdmin && action !== 'CREATE_NEWS_POST' && action !== 'DELETE_NEWS_POST' && action !== 'SELF_UPDATE_SPEAKER' && action !== 'SELF_UPDATE_EXHIBITOR') {
             return jsonResponse({ error: `Forbidden. Rol actual: ${profile?.role ?? 'sin perfil'}` });
         }
 
         if ((action === 'CREATE_NEWS_POST' || action === 'DELETE_NEWS_POST') && !canManageNews) {
+            return jsonResponse({ error: `Forbidden. Rol actual: ${profile?.role ?? 'sin perfil'}` });
+        }
+
+        if (action === 'SELF_UPDATE_SPEAKER' && !canSelfUpdateSpeaker) {
+            return jsonResponse({ error: `Forbidden. Rol actual: ${profile?.role ?? 'sin perfil'}` });
+        }
+
+        if (action === 'SELF_UPDATE_EXHIBITOR' && !canSelfUpdateExhibitor) {
             return jsonResponse({ error: `Forbidden. Rol actual: ${profile?.role ?? 'sin perfil'}` });
         }
 
@@ -544,6 +554,60 @@ serve(async (req) => {
             return jsonResponse({ success: true, exhibitor });
         }
 
+        if (action === 'SELF_UPDATE_EXHIBITOR') {
+            const { name, logoUrl, description, contact, website, standNumber, category } = payload;
+            const exhibitorId = profile?.exhibitor_id;
+            const trimmedName = typeof name === 'string' ? name.trim() : '';
+
+            if (!exhibitorId) {
+                return jsonResponse({ error: 'No hay un expositor vinculado a esta cuenta.' });
+            }
+
+            if (!trimmedName) {
+                return jsonResponse({ error: 'El nombre del expositor es obligatorio.' });
+            }
+
+            const { categoryId, categoryError } = await getCategoryByName(supabaseAdmin, category);
+
+            if (categoryError) {
+                return jsonResponse({ error: categoryError });
+            }
+
+            const { data: exhibitor, error: exhibitorError } = await supabaseAdmin
+                .from('exhibitors')
+                .update({
+                    name: trimmedName,
+                    logo_url: optionalText(logoUrl),
+                    description: optionalText(description),
+                    contact: optionalText(contact),
+                    website: optionalText(website),
+                    stand_number: optionalText(standNumber),
+                    category_id: categoryId,
+                })
+                .eq('id', exhibitorId)
+                .select('id, name, logo_url, description, contact, website, stand_number')
+                .single();
+
+            if (exhibitorError) {
+                return jsonResponse({ error: 'Error al actualizar tus datos de expositor: ' + exhibitorError.message });
+            }
+
+            const { error: profileUpdateError } = await supabaseAdmin
+                .from('profiles')
+                .update({
+                    name: trimmedName,
+                    company: trimmedName,
+                    photo_url: optionalText(logoUrl),
+                })
+                .eq('id', user.id);
+
+            if (profileUpdateError) {
+                return jsonResponse({ error: 'Se actualizó el expositor, pero no tu perfil interno: ' + profileUpdateError.message });
+            }
+
+            return jsonResponse({ success: true, exhibitor });
+        }
+
         if (action === 'CREATE_EXHIBITOR_CATEGORY') {
             const { name } = payload;
             const trimmedName = typeof name === 'string' ? name.trim() : '';
@@ -623,6 +687,55 @@ serve(async (req) => {
 
             if (speakerError) {
                 return jsonResponse({ error: 'Error al actualizar el ponente: ' + speakerError.message });
+            }
+
+            return jsonResponse({ success: true, speaker });
+        }
+
+        if (action === 'SELF_UPDATE_SPEAKER') {
+            const { name, photoUrl, title, company, bio, social } = payload;
+            const speakerId = profile?.speaker_id;
+            const trimmedName = typeof name === 'string' ? name.trim() : '';
+
+            if (!speakerId) {
+                return jsonResponse({ error: 'No hay un ponente vinculado a esta cuenta.' });
+            }
+
+            if (!trimmedName) {
+                return jsonResponse({ error: 'El nombre del ponente es obligatorio.' });
+            }
+
+            const { data: speaker, error: speakerError } = await supabaseAdmin
+                .from('speakers')
+                .update({
+                    name: trimmedName,
+                    photo_url: optionalText(photoUrl),
+                    title: optionalText(title),
+                    company: optionalText(company),
+                    bio: optionalText(bio),
+                    social_linkedin: optionalText((social as { linkedin?: string } | undefined)?.linkedin),
+                    social_twitter: optionalText((social as { twitter?: string } | undefined)?.twitter),
+                })
+                .eq('id', speakerId)
+                .select('id, name, photo_url, title, company, bio, social_linkedin, social_twitter')
+                .single();
+
+            if (speakerError) {
+                return jsonResponse({ error: 'Error al actualizar tus datos de ponente: ' + speakerError.message });
+            }
+
+            const { error: profileUpdateError } = await supabaseAdmin
+                .from('profiles')
+                .update({
+                    name: trimmedName,
+                    title: optionalText(title),
+                    company: optionalText(company),
+                    photo_url: optionalText(photoUrl),
+                })
+                .eq('id', user.id);
+
+            if (profileUpdateError) {
+                return jsonResponse({ error: 'Se actualizó el ponente, pero no tu perfil interno: ' + profileUpdateError.message });
             }
 
             return jsonResponse({ success: true, speaker });
