@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AgendaSession, Speaker, UserProfile } from '../../types';
 import { StarIcon } from '../Icons';
 
 import { supabase } from '../../utils/supabase';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface AgendaViewProps {
   sessions: AgendaSession[];
@@ -155,21 +156,62 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ sessions, myAgenda, togg
   const [view, setView] = useState<'all' | 'my'>('all');
   const [selectedDay, setSelectedDay] = useState<'Viernes' | 'Sábado' | 'Domingo'>('Viernes');
   const [ratingSession, setRatingSession] = useState<AgendaSession | null>(null);
+  const [selectedFridayTrack, setSelectedFridayTrack] = useState<'General' | 'Medicina Estética' | 'Spa' | 'PMU'>('General');
+  const [isSavingFridayTrack, setIsSavingFridayTrack] = useState(false);
+  const { showToast } = useToast();
+  const { refreshProfile } = useAuth();
 
   const days: ('Viernes' | 'Sábado' | 'Domingo')[] = ['Viernes', 'Sábado', 'Domingo'];
+  const fridayTrackOptions: ('General' | 'Medicina Estética' | 'Spa' | 'PMU')[] = ['General', 'Medicina Estética', 'Spa', 'PMU'];
+
+  const normalizeFridayTrack = (track?: string | null): 'General' | 'Medicina Estética' | 'Spa' | 'PMU' =>
+    fridayTrackOptions.includes(track as 'General' | 'Medicina Estética' | 'Spa' | 'PMU')
+      ? track as 'General' | 'Medicina Estética' | 'Spa' | 'PMU'
+      : 'General';
+
+  useEffect(() => {
+    setSelectedFridayTrack(normalizeFridayTrack(user.track));
+  }, [user.id, user.track]);
+
+  const handleFridayTrackChange = async (nextTrack: 'General' | 'Medicina Estética' | 'Spa' | 'PMU') => {
+    const previousTrack = normalizeFridayTrack(user.track);
+    setSelectedFridayTrack(nextTrack);
+
+    if (user.role !== 'attendee' || nextTrack === previousTrack) {
+      return;
+    }
+
+    setIsSavingFridayTrack(true);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ track: nextTrack })
+      .eq('id', user.id);
+
+    setIsSavingFridayTrack(false);
+
+    if (error) {
+      setSelectedFridayTrack(previousTrack);
+      showToast('No se pudo guardar tu área del viernes.', 'error');
+      return;
+    }
+
+    await refreshProfile();
+    showToast(
+      nextTrack === 'General'
+        ? 'Mostraremos la agenda completa del viernes.'
+        : `Área del viernes actualizada a ${nextTrack}.`,
+      'success'
+    );
+  };
 
   const sessionsForDay = sessions.filter(s => {
     if (s.day !== selectedDay) {
       return false;
     }
-    // Apply track-based filtering only for Friday
-    if (selectedDay === 'Viernes') {
-      // 'General' track users see everything.
-      // If the session has no specific track, everyone sees it.
-      // If the session track matches the user's track, they see it.
-      return user.track === 'General' || !s.track || s.track === user.track;
+    if (selectedDay === 'Viernes' && user.role === 'attendee') {
+      return selectedFridayTrack === 'General' || !s.track || s.track === selectedFridayTrack;
     }
-    // For other days, show all sessions
     return true;
   });
 
@@ -188,6 +230,37 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ sessions, myAgenda, togg
           </button>
         ))}
       </div>
+
+      {selectedDay === 'Viernes' && user.role === 'attendee' && (
+        <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          <p className="text-sm font-semibold text-brand-primary">Área del viernes</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Elige tu área para ver solo las pláticas generales y las de ese bloque.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {fridayTrackOptions.map(track => (
+              <button
+                key={track}
+                type="button"
+                disabled={isSavingFridayTrack}
+                onClick={() => handleFridayTrackChange(track)}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  selectedFridayTrack === track
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                } ${isSavingFridayTrack ? 'cursor-wait opacity-70' : ''}`}
+              >
+                {track}
+              </button>
+            ))}
+          </div>
+          {selectedFridayTrack !== 'General' && (
+            <p className="mt-3 text-xs text-gray-500">
+              Mostrando sesiones generales y del área <span className="font-semibold text-brand-primary">{selectedFridayTrack}</span>.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-center mb-6 bg-gray-100 rounded-xl p-1 shadow-inner">
         <button
