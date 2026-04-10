@@ -618,7 +618,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
         const FormComponent = {
             speaker: (props: any) => <SpeakerForm {...props} linkedAccount={props.item ? getLinkedSpeakerAccount(props.item.id) : undefined} />,
             exhibitor: (props: any) => <ExhibitorForm {...props} categories={exhibitorCategories} linkedAccount={props.item ? getLinkedExhibitorAccount(props.item.id) : undefined} />,
-            session: SessionForm,
+            session: (props: any) => <SessionForm {...props} speakers={speakers} />,
             category: CategoryForm,
             userAccount: UserAccountForm,
             attendeeQr: AttendeeQrForm
@@ -905,16 +905,77 @@ const ExhibitorForm: React.FC<{ item?: Exhibitor, linkedAccount?: UserProfile, c
     );
 };
 
-const SessionForm: React.FC<{ item?: AgendaSession, onSave: (data: any) => void, onClose: () => void }> = ({ item, onSave, onClose }) => {
-    const [formData, setFormData] = useState(item ? { ...item, speakerIds: item.speakerIds.join(', ') } : { title: '', description: '', room: '', day: 'Viernes', startTime: '', endTime: '', speakerIds: '', track: '' });
+const SessionForm: React.FC<{ item?: AgendaSession, speakers: Speaker[], onSave: (data: any) => void, onClose: () => void }> = ({ item, speakers, onSave, onClose }) => {
+    const [formData, setFormData] = useState(item ? { ...item, speakerIds: item.speakerIds } : { title: '', description: '', room: '', day: 'Viernes', startTime: '', endTime: '', speakerIds: [] as number[], track: '' });
+    const [isSpeakerPickerOpen, setIsSpeakerPickerOpen] = useState(false);
+
     const handleChange = (e: React.ChangeEvent<any>) => setFormData({ ...formData, [e.target.name]: e.target.value });
+    const selectedSpeakers = speakers.filter((speaker) => formData.speakerIds.includes(speaker.id));
+    const selectedSpeakerLabel = selectedSpeakers.length > 0
+        ? selectedSpeakers.map((speaker) => speaker.name).join(', ')
+        : 'Selecciona uno o varios ponentes';
+
+    const toggleSpeakerSelection = (speakerId: number) => {
+        setFormData((prev) => ({
+            ...prev,
+            speakerIds: prev.speakerIds.includes(speakerId)
+                ? prev.speakerIds.filter((id) => id !== speakerId)
+                : [...prev.speakerIds, speakerId]
+        }));
+    };
+
     return (
         <Modal title={item ? 'Editar Sesión' : 'Añadir Sesión'} onClose={onClose}>
             <form onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="p-4 space-y-4">
                 <FormField label="Título" id="title" value={formData.title} onChange={handleChange} />
                 <FormField label="Descripción" id="description" value={formData.description} onChange={handleChange} type="textarea" />
                 <FormField label="Sala" id="room" value={formData.room} onChange={handleChange} />
-                <FormField label="IDs de Ponentes (separados por coma)" id="speakerIds" value={String(formData.speakerIds)} onChange={handleChange} />
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Ponentes</label>
+                    <button
+                        type="button"
+                        onClick={() => setIsSpeakerPickerOpen((prev) => !prev)}
+                        className="mt-1 flex w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-left text-sm shadow-sm focus:border-brand-accent focus:outline-none focus:ring-1 focus:ring-brand-accent"
+                    >
+                        <span className={selectedSpeakers.length > 0 ? 'text-gray-800' : 'text-gray-400'}>
+                            {selectedSpeakerLabel}
+                        </span>
+                        <span className={`transform transition-transform ${isSpeakerPickerOpen ? 'rotate-180' : ''}`}>
+                            <ChevronDownIcon />
+                        </span>
+                    </button>
+                    {isSpeakerPickerOpen && (
+                        <div className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-3">
+                            {speakers.length === 0 ? (
+                                <p className="text-sm text-gray-500">No hay ponentes registrados todavía.</p>
+                            ) : (
+                                speakers.map((speaker) => {
+                                    const isSelected = formData.speakerIds.includes(speaker.id);
+
+                                    return (
+                                        <label key={speaker.id} className="flex cursor-pointer items-start space-x-3 rounded-md bg-white px-3 py-2 shadow-sm hover:bg-blue-50">
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => toggleSpeakerSelection(speaker.id)}
+                                                className="mt-1 h-4 w-4 rounded border-gray-300 text-brand-accent focus:ring-brand-accent"
+                                            />
+                                            <span className="min-w-0">
+                                                <span className="block text-sm font-medium text-gray-800">{speaker.name}</span>
+                                                <span className="block text-xs text-gray-500">
+                                                    ID {speaker.id}{speaker.company ? ` • ${speaker.company}` : ''}
+                                                </span>
+                                            </span>
+                                        </label>
+                                    );
+                                })
+                            )}
+                        </div>
+                    )}
+                    <p className="mt-1 text-xs text-gray-500">
+                        Puedes elegir varios ponentes para conferencias en conjunto.
+                    </p>
+                </div>
                 <FormField label="Día" id="day" value={formData.day} onChange={handleChange}>
                     <option>Viernes</option>
                     <option>Sábado</option>
@@ -1062,6 +1123,8 @@ const AttendeeQrForm: React.FC<{ onSave: (data: any) => void, onClose: () => voi
 
 const GeneratedAttendeeQrModal: React.FC<{ config: any, onClose: () => void }> = ({ config, onClose }) => {
     const qrCanvasRef = React.useRef<HTMLCanvasElement>(null);
+    const [qrError, setQrError] = React.useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = React.useState(true);
 
     React.useEffect(() => {
         let isMounted = true;
@@ -1071,30 +1134,47 @@ const GeneratedAttendeeQrModal: React.FC<{ config: any, onClose: () => void }> =
                 return;
             }
 
-            const secureQrPayload = await generateSecureToken({
-                id: config.userId,
-                loginEmail: config.loginEmail,
-                name: config.name,
-                attendeeCategory: config.attendeeCategory,
-                email: config.email || '',
-                phone: config.phone || '',
-                company: config.company || '',
-                title: config.title || '',
-            });
+            setIsGenerating(true);
+            setQrError(null);
 
-            if (!isMounted || !qrCanvasRef.current) {
-                return;
+            try {
+                const secureQrPayload = await generateSecureToken({
+                    id: config.userId,
+                    loginEmail: config.loginEmail,
+                    name: config.name,
+                    attendeeCategory: config.attendeeCategory,
+                    email: config.email || '',
+                    phone: config.phone || '',
+                    company: config.company || '',
+                    title: config.title || '',
+                });
+
+                if (!isMounted || !qrCanvasRef.current) {
+                    return;
+                }
+
+                new QRious({
+                    element: qrCanvasRef.current,
+                    value: secureQrPayload,
+                    size: 260,
+                    background: 'white',
+                    foreground: '#0D2A4C',
+                    level: 'M',
+                    padding: 10,
+                });
+            } catch (error) {
+                console.error('Failed to generate attendee QR:', error);
+
+                if (!isMounted) {
+                    return;
+                }
+
+                setQrError('No se pudo generar el QR en este deploy. Verifica que Netlify tenga configuradas VITE_HMAC_SECRET y VITE_ENCRYPTION_KEY, y vuelve a publicar el frontend.');
+            } finally {
+                if (isMounted) {
+                    setIsGenerating(false);
+                }
             }
-
-            new QRious({
-                element: qrCanvasRef.current,
-                value: secureQrPayload,
-                size: 260,
-                background: 'white',
-                foreground: '#0D2A4C',
-                level: 'M',
-                padding: 10,
-            });
         };
 
         void drawQr();
@@ -1111,10 +1191,21 @@ const GeneratedAttendeeQrModal: React.FC<{ config: any, onClose: () => void }> =
                     <h3 className="text-lg font-bold text-brand-primary">{config.name}</h3>
                     <p className="text-sm text-gray-500">Categoría: {getAttendeeCategoryLabel(config.attendeeCategory)}</p>
                 </div>
-                <canvas ref={qrCanvasRef} className="mx-auto" />
-                <p className="text-sm text-gray-600">
-                    Este QR temporal puede ser escaneado por el asistente en la pantalla de acceso para volver a entrar con su perfil.
-                </p>
+                {isGenerating && (
+                    <p className="text-sm text-gray-500">Generando QR...</p>
+                )}
+                {qrError ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                        {qrError}
+                    </div>
+                ) : (
+                    <>
+                        <canvas ref={qrCanvasRef} className="mx-auto" />
+                        <p className="text-sm text-gray-600">
+                            Este QR temporal puede ser escaneado por el asistente en la pantalla de acceso para volver a entrar con su perfil.
+                        </p>
+                    </>
+                )}
                 <div className="flex justify-end">
                     <button type="button" onClick={onClose} className="px-4 py-2 bg-brand-primary text-white rounded font-medium hover:bg-blue-900">Cerrar</button>
                 </div>
