@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
 import { Speaker, Exhibitor, AgendaSession, LeaderboardEntry, NewsPost, UserProfile } from '../types';
 import { normalizeAttendeeCategory } from '../utils/attendeeCategory';
+import { sortAgendaSessions } from '../utils/agendaSort';
 
 export const useAppData = (userId: string | undefined) => {
     const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -38,9 +39,9 @@ export const useAppData = (userId: string | undefined) => {
             if (eData) setExhibitors(eData.map(e => ({
                 id: e.id, name: e.name, logoUrl: e.logo_url || '', description: e.description || '', contact: e.contact || '', website: e.website || '', standNumber: e.stand_number || '', category: ''
             })));
-            if (aData) setAgendaSessions(aData.map(a => ({
+            if (aData) setAgendaSessions(sortAgendaSessions(aData.map(a => ({
                 id: a.id, title: a.title, startTime: a.start_time, endTime: a.end_time, room: a.room || '', description: a.description || '', day: a.day as any, track: a.track as any, speakerIds: Array.isArray(a.session_speakers) ? a.session_speakers.map((ss: any) => ss.speaker_id) : []
-            })));
+            }))));
             setExhibitorCategories([]);
             if (nData) setNewsPosts(nData.map(n => ({
                 id: n.id, title: n.title, content: n.content, authorName: n.author_name, authorRole: n.author_role as any, timestamp: n.created_at || '', category: n.category as any
@@ -156,7 +157,7 @@ export const useAppData = (userId: string | undefined) => {
                     }
 
                     if (payload.eventType === 'DELETE') {
-                        setAgendaSessions(prev => prev.filter(session => session.id !== payload.old.id));
+                        setAgendaSessions(prev => sortAgendaSessions(prev.filter(session => session.id !== payload.old.id)));
                     } else {
                         // For INSERT and UPDATE, fetch the specific session to get nested session_speakers
                         const { data: sessionData, error } = await supabase
@@ -183,8 +184,11 @@ export const useAppData = (userId: string | undefined) => {
                             };
 
                             setAgendaSessions(prev => {
-                                if (payload.eventType === 'INSERT') return [...prev, newSession];
-                                return prev.map(s => s.id === newSession.id ? newSession : s);
+                                if (payload.eventType === 'INSERT') {
+                                    return sortAgendaSessions([...prev, newSession]);
+                                }
+
+                                return sortAgendaSessions(prev.map(s => s.id === newSession.id ? newSession : s));
                             });
                         }
                     }

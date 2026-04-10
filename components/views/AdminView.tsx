@@ -10,6 +10,7 @@ import { getAttendeeCategoryLabel, normalizeAttendeeCategory } from '../../utils
 import { getAcceptedImageTypes, getImageUploadHint, removePublicImage, uploadPublicImage } from '../../utils/storageImages';
 import QRious from 'qrious';
 import { generateSecureToken } from '../../utils/security';
+import { sortAgendaSessions } from '../../utils/agendaSort';
 
 interface AdminViewProps {
     speakers: Speaker[];
@@ -173,7 +174,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ speakers, exhibitors, agen
 
         if (error) throw error;
 
-        setAgendaSessions((sessionRows || []).map(mapAgendaSessionRow));
+        setAgendaSessions(sortAgendaSessions((sessionRows || []).map(mapAgendaSessionRow)));
     };
 
     useEffect(() => {

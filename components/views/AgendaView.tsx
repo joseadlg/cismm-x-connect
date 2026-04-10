@@ -6,6 +6,7 @@ import { StarIcon } from '../Icons';
 import { supabase } from '../../utils/supabase';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { sortAgendaSessions } from '../../utils/agendaSort';
 
 interface AgendaViewProps {
   sessions: AgendaSession[];
@@ -215,7 +216,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({ sessions, myAgenda, togg
     return true;
   });
 
-  const filteredSessions = view === 'my' ? sessionsForDay.filter(s => myAgenda.includes(s.id)) : sessionsForDay;
+  const filteredSessions = sortAgendaSessions(
+    view === 'my' ? sessionsForDay.filter(s => myAgenda.includes(s.id)) : sessionsForDay
+  );
 
   return (
     <div className="p-4 pb-24">
