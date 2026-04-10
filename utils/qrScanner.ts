@@ -21,8 +21,9 @@ export const buildQrScanConfig = (mode: 'login' | 'general'): Html5QrcodeCameraS
     disableFlip: false,
     qrbox: (width, height) => {
         const minSide = Math.min(width, height);
-        const desiredSize = Math.floor(minSide * (mode === 'login' ? 0.9 : 0.82));
-        const clampedSize = Math.max(220, Math.min(desiredSize, minSide - 12));
+        const desiredSize = Math.floor(minSide * (mode === 'login' ? 0.72 : 0.68));
+        const maxSize = mode === 'login' ? 300 : 280;
+        const clampedSize = Math.max(210, Math.min(desiredSize, maxSize, minSide - 18));
 
         return {
             width: clampedSize,
@@ -44,24 +45,6 @@ export const tuneQrScannerForDistance = async (scanner: Html5Qrcode) => {
         // Ignore unsupported constraint updates.
     }
 
-    try {
-        const zoomFeature = scanner.getRunningTrackCameraCapabilities().zoomFeature();
-
-        if (!zoomFeature.isSupported()) {
-            return;
-        }
-
-        const minZoom = zoomFeature.min();
-        const maxZoom = zoomFeature.max();
-        const zoomRange = maxZoom - minZoom;
-
-        if (!Number.isFinite(zoomRange) || zoomRange <= 0.35) {
-            return;
-        }
-
-        const suggestedZoom = Math.min(maxZoom, Math.max(minZoom + (zoomRange * 0.28), 1.15));
-        await zoomFeature.apply(Number(suggestedZoom.toFixed(2)));
-    } catch {
-        // Ignore zoom tuning when the device/browser does not expose it.
-    }
+    // Avoid forcing zoom by default. Some mobile cameras lose focus on close badges
+    // when zoom is applied programmatically.
 };

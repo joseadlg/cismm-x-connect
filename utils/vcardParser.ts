@@ -8,6 +8,39 @@ export interface ParsedVCard {
     attendeeCategory?: string;
 }
 
+const splitContactCardFields = (value: string) => {
+    const fields: string[] = [];
+    let currentField = '';
+    let isEscaped = false;
+
+    for (const character of value) {
+        if (isEscaped) {
+            currentField += character;
+            isEscaped = false;
+            continue;
+        }
+
+        if (character === '\\') {
+            isEscaped = true;
+            continue;
+        }
+
+        if (character === ';') {
+            fields.push(currentField);
+            currentField = '';
+            continue;
+        }
+
+        currentField += character;
+    }
+
+    if (currentField) {
+        fields.push(currentField);
+    }
+
+    return fields;
+};
+
 const unwrapVCardLines = (vcardStr: string) => {
     const rawLines = vcardStr.split(/\r?\n/);
     const lines: string[] = [];
@@ -88,6 +121,20 @@ const buildNameFromStructuredValue = (value: string) => {
         .trim();
 };
 
+const buildNameFromCommaSeparatedValue = (value: string) => {
+    const parts = value
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean);
+
+    if (parts.length >= 2) {
+        const [lastName, firstName, ...rest] = parts;
+        return [firstName, ...rest, lastName].filter(Boolean).join(' ').trim();
+    }
+
+    return value.trim();
+};
+
 const extractPotentialBadgeId = (value: string) => {
     const candidateTokens = value
         .toUpperCase()
@@ -130,7 +177,120 @@ const extractCategoryFromFreeText = (value: string) => {
     return undefined;
 };
 
-export const parseVCard = (vcardStr: string): ParsedVCard | null => {
+const parseMeCard = (rawValue: string): ParsedVCard | null => {
+    const trimmedValue = rawValue.trim();
+
+    if (!/^MECARD:/i.test(trimmedValue)) {
+        return null;
+    }
+
+    const fields = splitContactCardFields(trimmedValue.slice(7));
+    const result: ParsedVCard = {};
+
+    for (const field of fields) {
+        const separatorIndex = field.indexOf(':');
+        if (separatorIndex === -1) continue;
+
+        const key = field.slice(0, separatorIndex).trim().toUpperCase();
+        const value = field.slice(separatorIndex + 1).trim();
+
+        switch (key) {
+            case 'N':
+                result.name = buildNameFromCommaSeparatedValue(value);
+                break;
+            case 'FN':
+                result.name = value;
+                break;
+            case 'TEL':
+                if (!result.phone) result.phone = value;
+                break;
+            case 'EMAIL':
+                if (!result.email) result.email = value;
+                break;
+            case 'ORG':
+                result.company = value;
+                break;
+            case 'TITLE':
+                result.title = value;
+                break;
+            case 'NOTE':
+                if (!result.id) {
+                    result.id = extractPotentialBadgeId(value);
+                }
+                if (!result.attendeeCategory) {
+                    result.attendeeCategory = extractCategoryFromFreeText(value);
+                }
+                break;
+            case 'UID':
+            case 'ID':
+                if (!result.id) result.id = value;
+                break;
+            default:
+                break;
+        }
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+};
+
+const parseBizCard = (rawValue: string): ParsedVCard | null => {
+    const trimmedValue = rawValue.trim();
+
+    if (!/^BIZCARD:/i.test(trimmedValue)) {
+        return null;
+    }
+
+    const fields = splitContactCardFields(trimmedValue.slice(8));
+    const result: ParsedVCard = {};
+    let firstName = '';
+    let lastName = '';
+
+    for (const field of fields) {
+        const separatorIndex = field.indexOf(':');
+        if (separatorIndex === -1) continue;
+
+        const key = field.slice(0, separatorIndex).trim().toUpperCase();
+        const value = field.slice(separatorIndex + 1).trim();
+
+        switch (key) {
+            case 'N':
+                firstName = value;
+                break;
+            case 'X':
+                lastName = value;
+                break;
+            case 'T':
+                result.title = value;
+                break;
+            case 'C':
+                result.company = value;
+                break;
+            case 'B':
+            case 'M':
+                if (!result.phone) result.phone = value;
+                break;
+            case 'E':
+                if (!result.email) result.email = value;
+                break;
+            case 'A':
+                if (!result.id) {
+                    result.id = extractPotentialBadgeId(value);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    const combinedName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (combinedName) {
+        result.name = combinedName;
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+};
+
+const parseStructuredVCard = (vcardStr: string): ParsedVCard | null => {
     if (!vcardStr || !vcardStr.toUpperCase().includes('BEGIN:VCARD')) {
         return null;
     }
@@ -202,3 +362,8 @@ export const parseVCard = (vcardStr: string): ParsedVCard | null => {
 
     return Object.keys(result).length > 0 ? result : null;
 };
+
+export const parseVCard = (rawValue: string): ParsedVCard | null =>
+    parseStructuredVCard(rawValue)
+    || parseMeCard(rawValue)
+    || parseBizCard(rawValue);

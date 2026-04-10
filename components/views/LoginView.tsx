@@ -317,7 +317,10 @@ export const LoginView: React.FC = () => {
                                     Alinea el <span className="font-bold text-slate-700">Código QR</span> de tu gafete oficial o un QR compatible tipo <span className="font-bold text-slate-700">vCard</span> dentro del recuadro.
                                 </p>
 
-                                <div className="w-full relative overflow-hidden rounded-xl shadow-md" style={{ minHeight: '60vh' }}>
+                                <div
+                                    className="w-full max-w-sm mx-auto relative overflow-hidden rounded-xl shadow-md border border-slate-200 bg-black"
+                                    style={{ height: '24rem', maxHeight: '52vh' }}
+                                >
                                     <div id="login-reader" className="w-full" />
                                     {loading && (
                                         <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10 backdrop-blur-sm">
