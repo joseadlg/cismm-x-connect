@@ -229,8 +229,8 @@ const MainApp = () => {
       } else {
         showToast(`Ya has visitado a ${data.name || 'este Expositor'}.`, 'info');
       }
-    } else if (data.id && data.name) {
-      let contact = data as UserProfile;
+    } else if (data.id) {
+      let contact = data as Partial<UserProfile> & { id: string };
 
       if (!isUuidLike(contact.id)) {
         let resolvedProfile: {
@@ -293,6 +293,33 @@ const MainApp = () => {
           email: resolvedProfile.email || contact.email,
           phone: resolvedProfile.phone || contact.phone,
           role: (resolvedProfile.role as UserRole | null) || contact.role,
+          attendeeCategory: contact.attendeeCategory,
+          interests: [],
+          track: 'General',
+        };
+      } else if (!contact.name) {
+        // Minimal in-app QR payloads only carry the UUID. Resolve the rest of the public
+        // profile here so the contact can still be saved and shown nicely.
+        const { data: profileById } = await supabase
+          .from('profiles')
+          .select('id, name, title, company, photo_url, email, phone, role, attendee_category')
+          .eq('id', contact.id)
+          .maybeSingle();
+
+        if (!profileById) {
+          showToast('Se leyó el QR, pero no pudimos cargar ese perfil en CISMM X Connect.', 'info');
+          return;
+        }
+
+        contact = {
+          id: profileById.id,
+          name: profileById.name || 'Contacto CISMM',
+          title: profileById.title || '',
+          company: profileById.company || '',
+          photoUrl: profileById.photo_url || '',
+          email: profileById.email || '',
+          phone: profileById.phone || '',
+          role: (profileById.role as UserRole | null) || 'attendee',
           attendeeCategory: contact.attendeeCategory,
           interests: [],
           track: 'General',

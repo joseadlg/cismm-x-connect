@@ -285,8 +285,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
 
         try {
           const qrValue = user.role === 'exhibitor' && user.exhibitorId
-          ? await generateCompactSecureToken({ exhibitorId: user.exhibitorId, name: user.company || user.name })
-          : await generateCompactSecureToken({ id: user.id, name: user.name, attendeeCategory: user.attendeeCategory });
+          ? await generateCompactSecureToken({ exhibitorId: user.exhibitorId })
+          : await generateCompactSecureToken({ id: user.id });
 
         if (isCancelled || !qrRef.current) {
           return;
@@ -295,11 +295,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ user, contacts, setAct
         new QRious({
           element: qrRef.current,
           value: qrValue,
-          size: 280,
+          size: 300,
           background: 'white',
-          foreground: '#0D2A4C',
+          foreground: '#111827',
           level: 'L',
-          padding: 14,
+          padding: 18,
         });
       } catch (error) {
         console.error('Error generating secure QR:', error);

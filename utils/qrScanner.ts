@@ -17,13 +17,12 @@ export const createQrScanner = (elementId: string) =>
 
 export const buildQrScanConfig = (mode: 'login' | 'general'): Html5QrcodeCameraScanConfig => ({
     fps: mode === 'login' ? 12 : 10,
-    aspectRatio: 1,
     disableFlip: false,
     qrbox: (width, height) => {
         const minSide = Math.min(width, height);
-        const desiredSize = Math.floor(minSide * (mode === 'login' ? 0.72 : 0.68));
-        const maxSize = mode === 'login' ? 300 : 280;
-        const clampedSize = Math.max(210, Math.min(desiredSize, maxSize, minSide - 18));
+        const desiredSize = Math.floor(minSide * (mode === 'login' ? 0.58 : 0.54));
+        const maxSize = mode === 'login' ? 250 : 230;
+        const clampedSize = Math.max(170, Math.min(desiredSize, maxSize, minSide - 28));
 
         return {
             width: clampedSize,

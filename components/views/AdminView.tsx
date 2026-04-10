@@ -1095,12 +1095,6 @@ const GeneratedAttendeeQrModal: React.FC<{ config: any, onClose: () => void }> =
                 const secureQrPayload = await generateCompactSecureToken({
                     id: config.userId,
                     loginEmail: config.loginEmail,
-                    name: config.name,
-                    attendeeCategory: config.attendeeCategory,
-                    email: config.email || '',
-                    phone: config.phone || '',
-                    company: config.company || '',
-                    title: config.title || '',
                 });
 
                 if (!isMounted || !qrCanvasRef.current) {
@@ -1112,9 +1106,9 @@ const GeneratedAttendeeQrModal: React.FC<{ config: any, onClose: () => void }> =
                     value: secureQrPayload,
                     size: 320,
                     background: 'white',
-                    foreground: '#0D2A4C',
+                    foreground: '#111827',
                     level: 'L',
-                    padding: 16,
+                    padding: 18,
                 });
             } catch (error) {
                 console.error('Failed to generate attendee QR:', error);

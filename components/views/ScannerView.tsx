@@ -28,7 +28,7 @@ export const ScannerView: React.FC<ScannerViewProps> = ({ onScanSuccess }) => {
 
       const contactData = qrResult.data;
 
-      if ((contactData.id && contactData.name) || contactData.exhibitorId) {
+      if (contactData.id || contactData.exhibitorId) {
         setError(null);
         onScanSuccess(contactData);
         return true;
