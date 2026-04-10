@@ -72,6 +72,11 @@ const useLocalStorage = <T,>(key: string, initialValue: T): [T, (value: T | ((pr
   return [storedValue, setValue];
 };
 
+const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuidLike = (value: unknown): value is string =>
+  typeof value === 'string' && UUID_LIKE_PATTERN.test(value.trim());
+
 const MainApp = () => {
   // ============================================================
   // ALL HOOKS MUST BE HERE — BEFORE ANY CONDITIONAL RETURNS
@@ -225,7 +230,75 @@ const MainApp = () => {
         showToast(`Ya has visitado a ${data.name || 'este Expositor'}.`, 'info');
       }
     } else if (data.id && data.name) {
-      const contact = data as UserProfile;
+      let contact = data as UserProfile;
+
+      if (!isUuidLike(contact.id)) {
+        let resolvedProfile: {
+          id: string;
+          name: string | null;
+          title: string | null;
+          company: string | null;
+          photo_url: string | null;
+          email: string | null;
+          phone: string | null;
+          role: UserRole | null;
+          attendee_category: string | null;
+        } | null = null;
+
+        const normalizedEmail = typeof contact.email === 'string' ? contact.email.trim().toLowerCase() : '';
+        const rawPhone = typeof contact.phone === 'string' ? contact.phone.trim() : '';
+        const normalizedPhone = rawPhone.replace(/\D/g, '');
+
+        if (normalizedEmail) {
+          const { data: profileByEmail } = await supabase
+            .from('profiles')
+            .select('id, name, title, company, photo_url, email, phone, role, attendee_category')
+            .eq('email', normalizedEmail)
+            .maybeSingle();
+
+          resolvedProfile = profileByEmail;
+        }
+
+        if (!resolvedProfile && rawPhone) {
+          const { data: profileByPhone } = await supabase
+            .from('profiles')
+            .select('id, name, title, company, photo_url, email, phone, role, attendee_category')
+            .eq('phone', rawPhone)
+            .maybeSingle();
+
+          resolvedProfile = profileByPhone;
+        }
+
+        if (!resolvedProfile && normalizedPhone && normalizedPhone !== rawPhone) {
+          const { data: profileByNormalizedPhone } = await supabase
+            .from('profiles')
+            .select('id, name, title, company, photo_url, email, phone, role, attendee_category')
+            .eq('phone', normalizedPhone)
+            .maybeSingle();
+
+          resolvedProfile = profileByNormalizedPhone;
+        }
+
+        if (!resolvedProfile) {
+          showToast('El vCard se leyó, pero esa persona aún no tiene un perfil activo reconocible en CISMM X Connect.', 'info');
+          return;
+        }
+
+        contact = {
+          id: resolvedProfile.id,
+          name: resolvedProfile.name || contact.name,
+          title: resolvedProfile.title || contact.title,
+          company: resolvedProfile.company || contact.company,
+          photoUrl: resolvedProfile.photo_url || contact.photoUrl,
+          email: resolvedProfile.email || contact.email,
+          phone: resolvedProfile.phone || contact.phone,
+          role: (resolvedProfile.role as UserRole | null) || contact.role,
+          attendeeCategory: contact.attendeeCategory,
+          interests: [],
+          track: 'General',
+        };
+      }
+
       if (contact.deviceId && contact.deviceId !== deviceId) {
         showToast(`⚠️ Alerta de Seguridad: Este perfil está vinculado a otro dispositivo.`, 'error');
         return;

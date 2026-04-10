@@ -8,67 +8,170 @@ export interface ParsedVCard {
     attendeeCategory?: string;
 }
 
+const unwrapVCardLines = (vcardStr: string) => {
+    const rawLines = vcardStr.split(/\r?\n/);
+    const lines: string[] = [];
+
+    for (const rawLine of rawLines) {
+        if (!lines.length) {
+            lines.push(rawLine);
+            continue;
+        }
+
+        if (rawLine.startsWith(' ') || rawLine.startsWith('\t')) {
+            lines[lines.length - 1] += rawLine.substring(1);
+            continue;
+        }
+
+        if (lines[lines.length - 1].endsWith('=')) {
+            lines[lines.length - 1] = `${lines[lines.length - 1].slice(0, -1)}${rawLine}`;
+            continue;
+        }
+
+        lines.push(rawLine);
+    }
+
+    return lines;
+};
+
+const decodeQuotedPrintable = (value: string) => {
+    const bytes: number[] = [];
+    const normalizedValue = value.replace(/=\r?\n/g, '');
+    const encoder = new TextEncoder();
+
+    for (let index = 0; index < normalizedValue.length; index++) {
+        const currentCharacter = normalizedValue[index];
+        const maybeHexPair = normalizedValue.slice(index + 1, index + 3);
+
+        if (currentCharacter === '=' && /^[A-F0-9]{2}$/i.test(maybeHexPair)) {
+            bytes.push(parseInt(maybeHexPair, 16));
+            index += 2;
+            continue;
+        }
+
+        bytes.push(...encoder.encode(currentCharacter));
+    }
+
+    return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+};
+
+const decodeVCardValue = (fullKey: string, value: string) => {
+    const decodedValue = /ENCODING=QUOTED-PRINTABLE/i.test(fullKey)
+        ? decodeQuotedPrintable(value)
+        : value;
+
+    return decodedValue
+        .replace(/\\n/gi, '\n')
+        .replace(/\\,/g, ',')
+        .replace(/\\;/g, ';')
+        .replace(/\\\\/g, '\\')
+        .trim();
+};
+
+const normalizePropertyKey = (fullKey: string) =>
+    fullKey
+        .split(';')[0]
+        .split('.')
+        .pop()
+        ?.toUpperCase() ?? '';
+
+const buildNameFromStructuredValue = (value: string) => {
+    const [lastName, firstName, middleName, honorificPrefix, honorificSuffix] = value
+        .split(';')
+        .map(part => part.trim())
+        .filter(Boolean);
+
+    return [honorificPrefix, firstName, middleName, lastName, honorificSuffix]
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
+const extractCategoryFromFreeText = (value: string) => {
+    const normalizedValue = value.toLowerCase();
+
+    if (normalizedValue.includes('vip')) {
+        return 'vip';
+    }
+
+    if (normalizedValue.includes('juez') || normalizedValue.includes('judge')) {
+        return 'juez';
+    }
+
+    if (normalizedValue.includes('general')) {
+        return 'general';
+    }
+
+    return undefined;
+};
+
 export const parseVCard = (vcardStr: string): ParsedVCard | null => {
     if (!vcardStr || !vcardStr.toUpperCase().includes('BEGIN:VCARD')) {
         return null;
     }
 
-    const lines = vcardStr.split(/\r?\n/);
+    const lines = unwrapVCardLines(vcardStr);
     const result: ParsedVCard = {};
 
-    for (let i = 0; i < lines.length; i++) {
-        let line = lines[i];
-
-        // Handle unfolding
-        while (i + 1 < lines.length && (lines[i + 1].startsWith(' ') || lines[i + 1].startsWith('\t'))) {
-            line += lines[i + 1].substring(1);
-            i++;
-        }
-
+    for (const line of lines) {
         const colonIndex = line.indexOf(':');
         if (colonIndex === -1) continue;
 
-        const fullKey = line.substring(0, colonIndex).toUpperCase();
-        const value = line.substring(colonIndex + 1).trim();
-
-        // Extract base key (ignore properties like ;TYPE=INTERNET)
-        const key = fullKey.split(';')[0];
+        const rawKey = line.substring(0, colonIndex);
+        const fullKey = rawKey.toUpperCase();
+        const value = decodeVCardValue(fullKey, line.substring(colonIndex + 1));
+        const key = normalizePropertyKey(fullKey);
 
         switch (key) {
             case 'FN':
                 result.name = value;
                 break;
+            case 'N':
+                if (!result.name) {
+                    result.name = buildNameFromStructuredValue(value);
+                }
+                break;
             case 'ORG':
-                result.company = value;
+                result.company = value.split(';').filter(Boolean).join(' ');
                 break;
             case 'TITLE':
                 result.title = value;
                 break;
             case 'EMAIL':
-                result.email = value;
+                if (!result.email) {
+                    result.email = value;
+                }
                 break;
             case 'TEL':
-                if (!result.phone) result.phone = value; // Keep first phone number
+                if (!result.phone) {
+                    result.phone = value;
+                }
                 break;
             case 'UID':
-                result.id = value.replace('urn:uuid:', '');
+            case 'X-CISMM-ID':
+            case 'X-UID':
+                if (!result.id) {
+                    result.id = value.replace(/^urn:uuid:/i, '');
+                }
                 break;
             case 'CATEGORIES':
             case 'CATEGORY':
             case 'X-CISMM-CATEGORY':
             case 'X-ATTENDEE-CATEGORY':
-                result.attendeeCategory = value.split(',')[0]?.trim();
+                if (!result.attendeeCategory) {
+                    result.attendeeCategory = value.split(',')[0]?.trim();
+                }
+                break;
+            case 'NOTE':
+                if (!result.attendeeCategory) {
+                    result.attendeeCategory = extractCategoryFromFreeText(value);
+                }
                 break;
             default:
                 break;
         }
     }
-
-    // If no name is provided, try to construct one from the 'N' property if we want,
-    // but usually FN is present.
-
-    // If we couldn't find an ID but we have an email, use the email as a fallback ID
-    // or generate a deterministic one. We'll simply let caller handle missing IDs.
 
     return Object.keys(result).length > 0 ? result : null;
 };

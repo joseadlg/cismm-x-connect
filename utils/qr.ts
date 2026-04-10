@@ -24,14 +24,15 @@ const parseJsonCandidate = (value: string): unknown | null => {
 };
 
 export const parseQrData = async (decodedText: string): Promise<ParsedQrResult> => {
-    const vcard = parseVCard(decodedText);
+    const trimmedText = decodedText.trim();
+    const vcard = parseVCard(trimmedText);
 
     if (vcard) {
         return {
             ok: true,
             source: 'vcard',
             data: {
-                id: vcard.id || vcard.email || vcard.name,
+                id: vcard.id || vcard.email || vcard.phone || vcard.name,
                 name: vcard.name || `Asistente ${vcard.email || 'Desconocido'}`,
                 company: vcard.company || '',
                 title: vcard.title || '',
@@ -42,8 +43,8 @@ export const parseQrData = async (decodedText: string): Promise<ParsedQrResult> 
         };
     }
 
-    const parsedCandidate = parseJsonCandidate(decodedText);
-    const secureTokenCandidate = parsedCandidate ?? decodedText;
+    const parsedCandidate = parseJsonCandidate(trimmedText);
+    const secureTokenCandidate = parsedCandidate ?? trimmedText;
 
     if (isSecureTokenLike(secureTokenCandidate)) {
         const payload = await verifySecureToken(secureTokenCandidate);

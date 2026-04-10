@@ -6,6 +6,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseQrData } from '../../utils/qr';
 import { resolveAttendeeCategory } from '../../utils/attendeeCategory';
+import { buildQrScanConfig, createQrScanner, tuneQrScannerForDistance } from '../../utils/qrScanner';
 
 export const LoginView: React.FC = () => {
     const [isScannerMode, setIsScannerMode] = useState(true);
@@ -14,6 +15,16 @@ export const LoginView: React.FC = () => {
     const { showToast } = useToast();
     const { refreshProfile } = useAuth();
     const [loading, setLoading] = useState(false);
+
+    const normalizeVirtualIdentifier = (value: unknown) =>
+        String(value ?? '')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9@._+-]+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-+|-+$/g, '');
 
     const buildAttendeeProfilePatch = (userName: string, attendeeCategory: string, contactData: Record<string, any>) => ({
         name: userName,
@@ -56,14 +67,14 @@ export const LoginView: React.FC = () => {
             return;
         }
 
-        const qrCodeScanner = new Html5Qrcode("login-reader");
+        const qrCodeScanner = createQrScanner("login-reader");
         scannerRef.current = qrCodeScanner;
         let isDisposed = false;
 
         const startScanner = () => {
             qrCodeScanner.start(
-                { facingMode: "environment" },
-                { fps: 15, qrbox: (w: number, h: number) => ({ width: Math.floor(Math.min(w, h) * 0.98), height: Math.floor(Math.min(w, h) * 0.98) }) },
+                { facingMode: { ideal: "environment" } },
+                buildQrScanConfig('login'),
                 async (decodedText: string) => {
                     // Pause scanner to prevent double-scans
                     if (scannerRef.current?.isScanning) {
@@ -74,7 +85,11 @@ export const LoginView: React.FC = () => {
                     await handleQrLogin(decodedText);
                 },
                 (errorMessage: string) => { /* Ignore periodic clear texts */ }
-            ).catch((err: any) => {
+            ).then(async () => {
+                if (!isDisposed) {
+                    await tuneQrScannerForDistance(qrCodeScanner);
+                }
+            }).catch((err: any) => {
                 if (isDisposed) {
                     return;
                 }
@@ -116,8 +131,8 @@ export const LoginView: React.FC = () => {
             const attendeeCategory = resolveAttendeeCategory(contactData);
 
             // Ensure userId is a string without spaces to prevent auth errors
-            const rawUserId = contactData.id || contactData.exhibitorId || contactData.email;
-            const userId = String(rawUserId).replace(/\s+/g, '').trim();
+            const rawUserId = contactData.id || contactData.exhibitorId || contactData.email || contactData.phone;
+            const userId = normalizeVirtualIdentifier(rawUserId);
             const userName = (contactData.name as string | undefined) || "Asistente " + userId;
             const loginEmailFromQr = typeof contactData.loginEmail === 'string'
                 ? contactData.loginEmail.trim().toLowerCase()
@@ -281,7 +296,7 @@ export const LoginView: React.FC = () => {
                             // SCANNER VIEW
                             <div className="flex flex-col items-center w-full">
                                 <p className="text-slate-500 text-sm mb-3 text-center px-2">
-                                    Alinea el <span className="font-bold text-slate-700">Código QR</span> de tu gafete oficial dentro del recuadro.
+                                    Alinea el <span className="font-bold text-slate-700">Código QR</span> de tu gafete oficial o un QR compatible tipo <span className="font-bold text-slate-700">vCard</span> dentro del recuadro.
                                 </p>
 
                                 <div className="w-full relative overflow-hidden rounded-xl shadow-md" style={{ minHeight: '60vh' }}>
