@@ -88,6 +88,30 @@ const buildNameFromStructuredValue = (value: string) => {
         .trim();
 };
 
+const extractPotentialBadgeId = (value: string) => {
+    const candidateTokens = value
+        .toUpperCase()
+        .split(/[\s,;|]+/)
+        .map(token => token.trim())
+        .filter(Boolean);
+
+    for (const token of candidateTokens) {
+        const compactToken = token.replace(/[^A-Z0-9-]/g, '');
+
+        if (compactToken.length < 4 || compactToken.length > 18) {
+            continue;
+        }
+
+        if (!/[A-Z]/.test(compactToken) || !/\d/.test(compactToken)) {
+            continue;
+        }
+
+        return compactToken;
+    }
+
+    return undefined;
+};
+
 const extractCategoryFromFreeText = (value: string) => {
     const normalizedValue = value.toLowerCase();
 
@@ -164,6 +188,9 @@ export const parseVCard = (vcardStr: string): ParsedVCard | null => {
                 }
                 break;
             case 'NOTE':
+                if (!result.id) {
+                    result.id = extractPotentialBadgeId(value);
+                }
                 if (!result.attendeeCategory) {
                     result.attendeeCategory = extractCategoryFromFreeText(value);
                 }

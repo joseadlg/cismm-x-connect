@@ -17,14 +17,32 @@ export const LoginView: React.FC = () => {
     const [loading, setLoading] = useState(false);
 
     const normalizeVirtualIdentifier = (value: unknown) =>
-        String(value ?? '')
-            .trim()
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9@._+-]+/g, '-')
-            .replace(/-+/g, '-')
-            .replace(/^-+|-+$/g, '');
+        (() => {
+            const rawValue = String(value ?? '').trim();
+
+            if (!rawValue) {
+                return '';
+            }
+
+            if (rawValue.includes('@')) {
+                return rawValue.toLowerCase();
+            }
+
+            const normalizedValue = rawValue
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '');
+
+            const digitsOnly = normalizedValue.replace(/\D/g, '');
+            if (digitsOnly.length >= 7 && !/[a-z]/.test(normalizedValue)) {
+                return digitsOnly;
+            }
+
+            return normalizedValue
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-+|-+$/g, '');
+        })();
 
     const buildAttendeeProfilePatch = (userName: string, attendeeCategory: string, contactData: Record<string, any>) => ({
         name: userName,
