@@ -17,7 +17,7 @@ export const GamificationView: React.FC<GamificationViewProps> = ({ leaderboard,
         <div className="text-brand-accent">
           <TrophyIcon className="w-16 h-16 mx-auto mb-2" />
         </div>
-        <h2 className="text-2xl font-bold">Gamificación</h2>
+        <h2 className="text-2xl font-bold">Leaderboard</h2>
         <p className="opacity-80">¡Participa, conecta y gana!</p>
         <div className="mt-4 bg-white/20 rounded-full px-4 py-2 inline-block">
           <span className="font-bold text-xl">{userPoints}</span>
@@ -26,7 +26,7 @@ export const GamificationView: React.FC<GamificationViewProps> = ({ leaderboard,
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-4">
-        <h3 className="text-xl font-bold text-brand-primary mb-4">Tabla de Líderes</h3>
+        <h3 className="text-xl font-bold text-brand-primary mb-4">Ranking</h3>
         <div className="space-y-3">
           {leaderboard.map((entry) => (
             <div

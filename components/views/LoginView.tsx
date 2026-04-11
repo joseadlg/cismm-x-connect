@@ -541,7 +541,7 @@ export const LoginView: React.FC = () => {
                         </div>
                         <div className="flex items-center space-x-3 text-slate-200">
                             <span className="text-brand-accent"><CheckCircleIcon /></span>
-                            <span className="font-medium">Networking y Gamificación en vivo</span>
+                            <span className="font-medium">Networking y Leaderboard en vivo</span>
                         </div>
                     </div>
                 </div>

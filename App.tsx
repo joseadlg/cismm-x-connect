@@ -456,7 +456,7 @@ const MainApp = () => {
   const points = profile.points || 0;
 
   const viewTitles: Record<View, string> = {
-    DASHBOARD: 'Inicio', AGENDA: 'Agenda', SPEAKERS: 'Ponentes', EXHIBITORS: 'Expositores', SCANNER: 'Escanear QR', PROFILE: 'Mi Perfil', GAMIFICATION: 'Gamificación', INFO: 'Información', ADMIN: 'Panel de Administración', MY_STAND: 'Mi Stand', NEWS: 'Noticias',
+    DASHBOARD: 'Inicio', AGENDA: 'Agenda', SPEAKERS: 'Ponentes', EXHIBITORS: 'Expositores', SCANNER: 'Escanear QR', PROFILE: 'Mi Perfil', GAMIFICATION: 'Leaderboard', INFO: 'Información', ADMIN: 'Panel de Administración', MY_STAND: 'Mi Stand', NEWS: 'Noticias',
   };
 
   const renderView = () => {

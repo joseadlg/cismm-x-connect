@@ -45,7 +45,7 @@ export const DashboardView = ({ myAgenda, allSessions, setActiveView, points, sp
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <QuickAccessCard title="Ponentes" icon={<UserGroupIcon />} onClick={() => setActiveView('SPEAKERS')} />
         <QuickAccessCard title="Expositores" icon={<UserGroupIcon />} onClick={() => setActiveView('EXHIBITORS')} />
-        <QuickAccessCard title="Gamificación" icon={<TrophyIcon />} onClick={() => setActiveView('GAMIFICATION')} />
+        <QuickAccessCard title="Leaderboard" icon={<TrophyIcon />} onClick={() => setActiveView('GAMIFICATION')} />
 
         {userRole === 'admin' && (
           <QuickAccessCard title="Admin Panel" icon={<UserGroupIcon />} onClick={() => setActiveView('ADMIN')} />
