@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabase';
 import { UserProfile } from '../types';
@@ -11,7 +11,7 @@ interface AuthContextType {
     profile: UserProfile | null;
     isLoading: boolean;
     signOut: () => Promise<void>;
-    refreshProfile: () => Promise<void>;
+    refreshProfile: (userIdOverride?: string) => Promise<UserProfile | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -20,14 +20,17 @@ const AuthContext = createContext<AuthContextType>({
     profile: null,
     isLoading: true,
     signOut: async () => { },
-    refreshProfile: async () => { },
+    refreshProfile: async () => null,
 });
+
+const LAST_ACCESS_ERROR_STORAGE_KEY = 'cismm_last_access_error';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const accessErrorNotifiedRef = useRef(false);
 
     const getDeviceId = () => getOrCreateDeviceId();
 
@@ -56,7 +59,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     await supabase.from('profiles').update({ registered_devices: currentDevices }).eq('id', userId);
                 } else {
                     // Deny access
-                    alert("Límite de dispositivos alcanzado para esta cuenta. Solicita un reseteo de dispositivos al administrador.");
+                    const accessErrorMessage = "Tu gafete ya está vinculado a otro dispositivo. Reporta el fallo por WhatsApp desde la pantalla de ingreso para que el administrador revise tu caso.";
+                    if (!accessErrorNotifiedRef.current) {
+                        accessErrorNotifiedRef.current = true;
+                        try {
+                            window.sessionStorage.setItem(LAST_ACCESS_ERROR_STORAGE_KEY, accessErrorMessage);
+                        } catch {
+                            // Ignore storage errors in private browsing modes.
+                        }
+                        alert(accessErrorMessage);
+                    }
                     await supabase.auth.signOut();
                     return null;
                 }
@@ -88,11 +100,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const refreshProfile = async () => {
-        if (user?.id) {
-            const p = await fetchProfile(user.id);
-            setProfile(p);
+    const refreshProfile = async (userIdOverride?: string) => {
+        const targetUserId = userIdOverride || user?.id;
+        if (!targetUserId) {
+            return null;
         }
+
+        const p = await fetchProfile(targetUserId);
+        setProfile(p);
+        return p;
     };
 
     useEffect(() => {

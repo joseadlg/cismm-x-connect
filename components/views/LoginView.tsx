@@ -8,6 +8,10 @@ import { parseQrData } from '../../utils/qr';
 import { resolveAttendeeCategory } from '../../utils/attendeeCategory';
 import { buildQrScanConfig, createQrScanner, tuneQrScannerForDistance } from '../../utils/qrScanner';
 
+const WHATSAPP_SUPPORT_PHONE = '528187782883';
+const WHATSAPP_SUPPORT_PHONE_LABEL = '818 778 2883';
+const LAST_ACCESS_ERROR_STORAGE_KEY = 'cismm_last_access_error';
+
 export const LoginView: React.FC = () => {
     const [isScannerMode, setIsScannerMode] = useState(true);
     const [loginInput, setLoginInput] = useState(''); // Accepts username or email
@@ -15,6 +19,16 @@ export const LoginView: React.FC = () => {
     const { showToast } = useToast();
     const { refreshProfile } = useAuth();
     const [loading, setLoading] = useState(false);
+    const [supportName, setSupportName] = useState('');
+    const [supportPhone, setSupportPhone] = useState('');
+    const [supportDetails, setSupportDetails] = useState('');
+    const [lastAccessError, setLastAccessError] = useState<string | null>(() => {
+        try {
+            return window.sessionStorage.getItem(LAST_ACCESS_ERROR_STORAGE_KEY);
+        } catch {
+            return null;
+        }
+    });
 
     const normalizeVirtualIdentifier = (value: unknown) =>
         (() => {
@@ -56,6 +70,7 @@ export const LoginView: React.FC = () => {
 
     // Scanner state
     const scannerRef = useRef<Html5Qrcode | null>(null);
+    const qrLoginInFlightRef = useRef(false);
 
     const cleanupScanner = useCallback(async () => {
         const scanner = scannerRef.current;
@@ -94,6 +109,12 @@ export const LoginView: React.FC = () => {
                 { facingMode: { ideal: "environment" } },
                 buildQrScanConfig('login'),
                 async (decodedText: string) => {
+                    if (qrLoginInFlightRef.current) {
+                        return;
+                    }
+
+                    qrLoginInFlightRef.current = true;
+
                     // Pause scanner to prevent double-scans
                     if (scannerRef.current?.isScanning) {
                         try {
@@ -127,6 +148,19 @@ export const LoginView: React.FC = () => {
         };
     }, [cleanupScanner, isScannerMode, showToast]);
 
+    const prefillSupportContact = (name: unknown, phone: unknown) => {
+        const nextName = typeof name === 'string' ? name.trim() : '';
+        const nextPhone = typeof phone === 'string' ? phone.trim() : '';
+
+        if (nextName) {
+            setSupportName(currentName => currentName.trim() ? currentName : nextName);
+        }
+
+        if (nextPhone) {
+            setSupportPhone(currentPhone => currentPhone.trim() ? currentPhone : nextPhone);
+        }
+    };
+
     const handleQrLogin = async (decodedText: string) => {
         try {
             setLoading(true);
@@ -155,6 +189,7 @@ export const LoginView: React.FC = () => {
             const loginEmailFromQr = typeof contactData.loginEmail === 'string'
                 ? contactData.loginEmail.trim().toLowerCase()
                 : '';
+            prefillSupportContact(userName, contactData.phone);
 
             if (!userId) {
                 showToast("Código QR vacío o sin identificador.", "error");
@@ -175,6 +210,7 @@ export const LoginView: React.FC = () => {
                 email: autoEmail,
                 password: autoPassword
             });
+            let authenticatedUserId = signInData?.user?.id || null;
 
             // Auto-register via Virtual Credentials if not exists
             if (error && error.message.includes("Invalid login credentials") && !loginEmailFromQr) {
@@ -200,15 +236,17 @@ export const LoginView: React.FC = () => {
                     }
 
                     // Force a re-login after creating to establish the session definitely
-                    const { error: signInError } = await supabase.auth.signInWithPassword({ email: autoEmail, password: autoPassword });
+                    const { data: retrySignInData, error: signInError } = await supabase.auth.signInWithPassword({ email: autoEmail, password: autoPassword });
                     if (signInError) {
                         console.error("Auto-signin error after signup:", signInError);
                         throw new Error("Error al iniciar sesión automáticamente: " + signInError.message);
                     }
+                    authenticatedUserId = retrySignInData.user?.id || signUpData.user.id;
                 }
             } else if (error) {
                 throw error;
             } else if (signInData?.user) {
+                authenticatedUserId = signInData.user.id;
                 // Login was successful! 
                 // But if the 'profiles' db table got wiped, their Auth user exists but profile is missing.
                 // Fail-safe: Ensure their row exists in 'profiles'
@@ -234,13 +272,27 @@ export const LoginView: React.FC = () => {
             }
 
             // Force AuthContext to reload profile so App.tsx redirects off LoginView immediately
-            try {
-                await refreshProfile();
-            } catch (err) { }
+            const refreshedProfile = await refreshProfile(authenticatedUserId || undefined);
+            if (!refreshedProfile) {
+                throw new Error("No se pudo completar el acceso. Si tu gafete ya estaba vinculado, reporta el caso por WhatsApp.");
+            }
 
+            setLastAccessError(null);
+            try {
+                window.sessionStorage.removeItem(LAST_ACCESS_ERROR_STORAGE_KEY);
+            } catch {
+                // Ignore storage errors in private browsing modes.
+            }
             showToast(`¡Bienvenido, ${userName}!`, 'success');
         } catch (e: any) {
             console.error("QR Login Error:", e);
+            const supportErrorMessage = "No se pudo completar el acceso. Reporta el fallo por WhatsApp para revisar tu caso.";
+            setLastAccessError(supportErrorMessage);
+            try {
+                window.sessionStorage.setItem(LAST_ACCESS_ERROR_STORAGE_KEY, supportErrorMessage);
+            } catch {
+                // Ignore storage errors in private browsing modes.
+            }
             showToast("Error de acceso: " + (e.message || "Credenciales inválidas"), "error");
             try {
                 if (scannerRef.current) {
@@ -250,6 +302,7 @@ export const LoginView: React.FC = () => {
                 // ignore resume errors
             }
         } finally {
+            qrLoginInFlightRef.current = false;
             setLoading(false);
         }
     };
@@ -269,6 +322,35 @@ export const LoginView: React.FC = () => {
             showToast("Credenciales inválidas o incompletas.", 'error');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSupportSubmit = (event: React.FormEvent) => {
+        event.preventDefault();
+
+        const name = supportName.trim();
+        const phone = supportPhone.trim();
+        const phoneDigits = phone.replace(/\D/g, '');
+        const details = supportDetails.trim();
+
+        if (!name || phoneDigits.length < 8) {
+            showToast('Escribe tu nombre y un teléfono válido para reportar el acceso.', 'warning');
+            return;
+        }
+
+        const message = [
+            'Reporta un fallo de conexión',
+            `Nombre: ${name}`,
+            `Teléfono: ${phone}`,
+            details
+                ? `Mensaje: ${details}`
+                : 'Mensaje: No pude entrar a CISMM X CONNECT. Favor de revisar mi caso y avisarme cuando pueda volver a intentar.',
+        ].join('\n');
+        const whatsappUrl = `https://wa.me/${WHATSAPP_SUPPORT_PHONE}?text=${encodeURIComponent(message)}`;
+        const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+
+        if (!whatsappWindow) {
+            window.location.href = whatsappUrl;
         }
     };
 
@@ -329,6 +411,63 @@ export const LoginView: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
+
+                                <form onSubmit={handleSupportSubmit} className="w-full mt-5 p-4 bg-orange-50 border border-orange-200 rounded-md space-y-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-orange-900">¿No puedes entrar?</h3>
+                                        <p className="text-xs text-orange-800 mt-1">
+                                            Reporta el fallo por WhatsApp al {WHATSAPP_SUPPORT_PHONE_LABEL}. Te avisarán cuando puedas volver a intentar.
+                                        </p>
+                                        {lastAccessError && (
+                                            <p className="text-xs text-orange-900 mt-2 bg-white/70 border border-orange-200 rounded-md px-3 py-2">
+                                                {lastAccessError}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-orange-900 uppercase tracking-wide mb-1">Nombre completo</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={supportName}
+                                            onChange={(event) => setSupportName(event.target.value)}
+                                            placeholder="Tu nombre como aparece en el gafete"
+                                            className="w-full p-3 bg-white border border-orange-200 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-all text-slate-900 text-sm"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-orange-900 uppercase tracking-wide mb-1">Teléfono</label>
+                                        <input
+                                            type="tel"
+                                            inputMode="tel"
+                                            required
+                                            value={supportPhone}
+                                            onChange={(event) => setSupportPhone(event.target.value)}
+                                            placeholder="81 1234 5678"
+                                            className="w-full p-3 bg-white border border-orange-200 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-all text-slate-900 text-sm"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-orange-900 uppercase tracking-wide mb-1">Mensaje opcional</label>
+                                        <textarea
+                                            value={supportDetails}
+                                            onChange={(event) => setSupportDetails(event.target.value)}
+                                            placeholder="Ej. Se cerró después de escanear o me pide resetear el acceso."
+                                            rows={2}
+                                            className="w-full p-3 bg-white border border-orange-200 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-all text-slate-900 text-sm resize-none"
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        className="w-full py-3 px-4 bg-green-600 text-white rounded-md font-semibold hover:bg-green-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-600 shadow-sm"
+                                    >
+                                        Reportar fallo por WhatsApp
+                                    </button>
+                                </form>
                             </div>
                         ) : (
                             // STAFF LOGIN FORM
